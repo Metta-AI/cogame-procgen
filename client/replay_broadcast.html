@@ -1690,9 +1690,11 @@ body[data-embed] #board { top: 0; height: 100%; }
 #scorebug .plate .cog-alias,
 #scorebug .plate .gem-label,
 #scorebug .plate .lvl-label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
+  /* These do NOT shrink: a label squeezed to its first letter ("L", "G",
+     "cc") is worse than no label, and under 640 px -- the featured-match
+     iframe -- they are hidden outright by the rules at the end of this
+     block, so they can never overflow the plate either. */
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 #scorebug .plate .cog-chip,
