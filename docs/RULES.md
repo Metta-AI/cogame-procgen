@@ -187,3 +187,10 @@ From this repo's own design note:
    bound is unchanged too, and is enforced by the budget guard above rather than by
    `turns × turnBudget`: the episode settles early with FEWER turns, so a slow provider costs
    turns, never wall clock.
+8. **The reply is a prefill plus a completion.** Every request prefills the assistant turn with
+   `{`, and `src/procgen/llm.nim` puts that character back before the reply is parsed, so what
+   the seat "said" is one byte this repo wrote followed by the model's own text. Measured: once
+   divergence 7's wider deadlines let long generations finish, haiku occasionally spent all 900
+   output tokens on preamble and was cut off before it ever wrote a brace (hosted round 7,
+   2026-08-28). `maxOutputTokens` stays **900** — the prefill removes that move instead of
+   paying for it, and shortens every reply.

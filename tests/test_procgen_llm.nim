@@ -5,7 +5,8 @@
 ## `src/procgen/llm.nim` is `coworld-ctf`'s `src/ctf/llm.nim`, because all of
 ## it is scar tissue from real hosted failures.
 
-import std/[os, strutils]
+import std/[json, os, strutils]
+import curly
 import procgen/[directives, llm, sim, sim_types]
 
 var failures = 0
@@ -49,6 +50,58 @@ block:
 block:
   check defaultGameConfig().maxOutputTokens == 900,
     "llm: maxOutputTokens is 900 (the playbook's Bedrock note)"
+
+# the assistant turn is PREFILLED with '{' -----------------------------------
+block:
+  ## Hosted round 7 showed a reply that spent all 900 output tokens on prose
+  ## and was cut off before it ever wrote a brace. Handing the model its first
+  ## character removes that move: the reply IS the object from its first byte.
+  putEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME", "http://127.0.0.1:9100")
+  putEnv("AWS_BEARER_TOKEN_BEDROCK", "not-a-real-token")
+  let bedrock = newLlmClient(defaultGameConfig())
+  delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
+  delEnv("AWS_BEARER_TOKEN_BEDROCK")
+  check bedrock.transport == ltBedrock, "llm: the bedrock transport is live"
+  let body = parseJson(bedrock.requestFor(SystemPrompt, "the view").body)
+  check body{"messages"}.len == 2,
+    "llm: the request carries the user turn AND the prefilled assistant turn"
+  check body{"messages"}[1]{"role"}.getStr() == "assistant" and
+    body{"messages"}[1]{"content"}.getStr() == JsonPrefill,
+    "llm: and the assistant turn is exactly `{`"
+  check body{"max_tokens"}.getInt() == 900,
+    "llm: the output cap is unchanged at 900"
+
+  ## ...so `textOf` has to put the prefix back: what comes off the wire is the
+  ## REST of the object.
+  let continued = Response(code: 200, body: $(%*{
+    "stop_reason": "end_turn",
+    "content": [{"type": "text", "text": "\"moves\":\"RRD\"}"}]}))
+  let text = bedrock.textOf(continued, "", "http://127.0.0.1:9100")
+  check text == "{\"moves\":\"RRD\"}",
+    "llm: the reply is the prefix plus the completion (got " & text & ")"
+  check extractJsonObject(text){"moves"}.getStr() == "RRD",
+    "llm: and it parses as the plan object"
+
+  ## ...but a provider that ECHOES the prefilled turn must not be handed `{{`:
+  ## a reply that already opens with the brace is passed through untouched.
+  let echoed = Response(code: 200, body: $(%*{
+    "stop_reason": "end_turn",
+    "content": [{"type": "text", "text": "{\"moves\":\"LL\"}"}]}))
+  check bedrock.textOf(echoed, "", "http://127.0.0.1:9100") ==
+    "{\"moves\":\"LL\"}",
+    "llm: an already-braced reply is not prefixed a second time"
+
+  ## An EMPTY reply is left empty rather than prefixed into a lie, so the
+  ## max_tokens raise still fires on a reply that never became JSON at all.
+  let empty = Response(code: 200, body: $(%*{
+    "stop_reason": "max_tokens", "content": []}))
+  var raised = ""
+  try:
+    discard bedrock.textOf(empty, "", "http://127.0.0.1:9100")
+  except LlmError as error:
+    raised = error.msg
+  check "cut off at max_tokens" in raised,
+    "llm: a reply with no JSON at all still raises the max_tokens error"
 
 # the system prompt is this game's, and it is complete -----------------------
 block:

@@ -31,6 +31,9 @@ const
   AnthropicUrl = "https://api.anthropic.com/v1/messages"
   AnthropicVersion = "2023-06-01"
   BedrockAnthropicVersion = "bedrock-2023-05-31"
+  JsonPrefill* = "{"
+    ## The prefilled assistant turn: the reply must BEGIN as the JSON object,
+    ## because the model is handed its first character.
 
 type
   LlmTransport* = enum
@@ -133,10 +136,19 @@ proc requestFor*(
   client: LlmClient, system, user: string
 ): tuple[url: string, headers: HttpHeaders, body: string] =
   ## One Messages-API request, shaped for whichever transport is live.
+  ##
+  ## The assistant turn is PREFILLED with `{`. The model then continues the
+  ## object it has already started, so it cannot spend its output budget on
+  ## prose before the JSON — the failure the hosted round-7 log showed as
+  ## `cut off at max_tokens`. It also shortens every reply. `textOf` puts the
+  ## prefix back on the way out.
   var body = %*{
     "max_tokens": client.maxOutputTokens,
     "system": system,
-    "messages": [{"role": "user", "content": user}]
+    "messages": [
+      {"role": "user", "content": user},
+      {"role": "assistant", "content": JsonPrefill}
+    ]
   }
   var headers: HttpHeaders
   headers["content-type"] = "application/json"
@@ -190,6 +202,15 @@ proc textOf*(
   for contentBlock in payload["content"]:
     if contentBlock{"type"}.getStr() == "text":
       result.add(contentBlock{"text"}.getStr())
+  ## The assistant turn was prefilled with `{` (see `requestFor`), so what
+  ## comes back is the REST of the object: put the prefix back before anything
+  ## reads it. Two cases are deliberately left alone — an EMPTY reply, because
+  ## prefixing nothing would invent a reply the model never gave and the raise
+  ## below is the truthful answer; and a reply that already opens with `{`,
+  ## because a provider that echoes the prefilled turn would otherwise be
+  ## handed `{{` and fall back on every single turn.
+  if result.len > 0 and not result.strip(trailing = false).startsWith(JsonPrefill):
+    result = JsonPrefill & result
   if payload{"stop_reason"}.getStr() == "max_tokens" and '{' notin result:
     raise newException(LlmError, "reply cut off at max_tokens before any " &
       "JSON: " & result.truncateRunes(160).replace("\n", " "))
