@@ -1,6 +1,6 @@
 ## Replaying an episode from the recorded bytes alone.
 ##
-## The wasm viewer and the game's own local `/client/replay` route both drive
+## The wasm viewer and the game's own local developer replay mode both drive
 ## this: decode the replay, rebuild the `GameConfig` and the gauntlet plan
 ## from the recorded config document, RE-GENERATE every level from its seed,
 ## and re-run `stepFrame` over the recorded action bytes. The per-frame

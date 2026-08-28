@@ -157,12 +157,6 @@ proc handleClientGlobal(request: Request) {.gcsafe.} =
   request.respond(200, textHeaders("text/html; charset=utf-8"),
     readClientPage("replay_broadcast.html"))
 
-proc handleClientReplay(request: Request) {.gcsafe.} =
-  ## LOCAL developer replay mode only. This route is NEVER declared to the
-  ## platform: the hosted viewer is the static wasm bundle.
-  request.respond(200, textHeaders("text/html; charset=utf-8"),
-    readClientPage("replay_broadcast.html"))
-
 proc handleAsset(request: Request) {.gcsafe.} =
   var rel = request.path
   while rel.len > 0 and rel[0] == '/':
@@ -307,7 +301,11 @@ proc buildRouter(): Router =
   result.get("/healthz", handleHealth)
   result.get("/client/player", handleClientPlayer)
   result.get("/client/global", handleClientGlobal)
-  result.get("/client/replay", handleClientReplay)
+  ## There is NO `/client/replay` route: the hosted replay viewer is the
+  ## static wasm bundle and nothing else, so the pod serves no replay path at
+  ## all (acceptance checklist item 3). Local developer replay mode
+  ## (`COGAME_LOAD_REPLAY_URI`) still works — `runLocalReplay` serves the same
+  ## page from the asset route at `/`.
   result.get("/player", handleUpgrade)
   result.get("/global", handleUpgrade)
   result.get("/**", handleAsset)
@@ -524,7 +522,10 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
   httpServer.close()
 
 proc runLocalReplay*(host: string, port: int, bytes: string) =
-  ## The local developer replay route. Never declared to the platform.
+  ## Local developer replay mode, off `COGAME_LOAD_REPLAY_URI`. Serves the
+  ## broadcast page from the asset route at `/`; there is no `/client/replay`
+  ## path here or anywhere else, because the only replay viewer this game
+  ## declares is the static wasm bundle.
   var rt = loadReplay(bytes)
   echo "procgen: local replay, ", rt.replay.frames.len, " frames, ",
     "mismatch at ", rt.mismatchFrame

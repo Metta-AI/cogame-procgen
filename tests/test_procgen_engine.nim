@@ -311,6 +311,14 @@ block:
     "31: and it does not open the player socket"
   check "socket.send(message.data, Pong)" in source,
     "31: the websocket handler answers a Ping with a Pong"
+  ## Acceptance checklist item 3, read literally: the pod serves no
+  ## `/client/replay` path at all. The only replay viewer this game declares
+  ## is the static bundle, and local developer replay mode reaches the same
+  ## page through the asset route.
+  check "\"/client/replay\"" notin source,
+    "31: there is no /client/replay route in the pod"
+  check "handleClientReplay" notin source,
+    "31: and no handler left behind for one"
   check "ShutdownGraceSeconds" in source and
     "var graceUntil = getMonoTime()" in source,
     "31: and /healthz + /global keep answering for the shutdown grace"
