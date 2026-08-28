@@ -103,6 +103,17 @@ block:
       "17: a directive record names the ALIAS, never the policy"
     check RealName notin record,
       "17: a directive record never carries the real name"
+    ## The clause the note names: the record's `view` is the observation, so
+    ## it is checked as its own field and not only as a substring of the
+    ## record.
+    check node.hasKey("view"),
+      "17: a directive record carries the observation it answered"
+    let view = node{"view"}.getStr()
+    check RealName notin view, "17: no real player name in directive.view"
+    check "seen" notin view, "17: and no split in directive.view"
+    for planned in played.episode.plan:
+      check $planned.seed notin view,
+        "17: and no level seed (" & $planned.seed & ")"
 
 if failures > 0:
   quit("test_procgen_identity_privacy: " & $failures & " failures", 1)

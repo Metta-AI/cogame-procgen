@@ -59,6 +59,48 @@ block:
       check record.len <= 1024,
         "20: a serialised scripted directive is under 1024 bytes"
 
+# ...and the record carries the observation it answered ----------------------
+block:
+  ## The `directive` record's `view` is "the observation minus `your_notes`"
+  ## (design note §Record and event vocabulary A). It is also the only field
+  ## with no rune cap of its own, so it is the one `boundedDirectiveRecord`
+  ## drops when a record would exceed `MaxDirectiveRunes` — never a cut of the
+  ## SERIALISED string, which would emit broken JSON.
+  var config = defaultGameConfig()
+  config.seed = 909
+  config.turnSpacingMs = 0
+  var episode = newEpisode(config)
+  discard episode.beginLevel()
+  let
+    order = scriptedPlan(episode.level, blPathfinder, 6, 4)
+    view = episode.recordViewJson()
+  check view.len > 200, "20: the record's view is the whole observation"
+  check "your_notes" notin view,
+    "20: minus `your_notes`, which the seat wrote itself"
+  check "\"map\"" in view and "\"actions\"" in view,
+    "20: and it really is the observation the seat was shown"
+  let record = boundedDirectiveRecord(order, 3, 2, "COG-alpha", view)
+  check record.runeLen <= MaxDirectiveRunes,
+    "20: a directive record is at most MaxDirectiveRunes (" &
+      $record.runeLen & ")"
+  var node = parseJson(record)
+  check node{"view"}.getStr() == view,
+    "20: and it carries the view verbatim"
+  ## Force the ladder: a view that cannot fit is DROPPED, and what is left is
+  ## still one parseable record.
+  var huge = view
+  while huge.runeLen <= MaxDirectiveRunes:
+    huge.add(view)
+  let trimmed = boundedDirectiveRecord(order, 3, 2, "COG-alpha", huge)
+  check trimmed.runeLen <= MaxDirectiveRunes,
+    "20: an oversized view is trimmed back under the cap (" &
+      $trimmed.runeLen & ")"
+  node = parseJson(trimmed)
+  check not node.hasKey("view"),
+    "20: by DROPPING the view, not by cutting the serialised JSON"
+  check node{"moves"}.getStr() == order.moves,
+    "20: everything else survives the trim"
+
 # 21. baselines never leave the cog unactuated -------------------------------
 block:
   for kind in [blPathfinder, blScavenger]:

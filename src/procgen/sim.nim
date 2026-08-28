@@ -218,6 +218,132 @@ proc applyPlan*(episode: var Episode, moves: string): PlanResult =
       break
 
 # ---------------------------------------------------------------------------
+#  The per-seat observation — what the seat is shown, and what the `directive`
+#  record echoes back. It lives here rather than in the decision layer because
+#  the replay record needs it and `decide` drags libcurl in with it.
+# ---------------------------------------------------------------------------
+
+proc observationRows*(st: LevelState): seq[string] =
+  ## The nine 15-character rows, with the cog drawn as `@` and every hunter as
+  ## `X`. It is the WHOLE level: this game is fully observed.
+  result = st.grid.gridRows()
+  for h in st.hunters:
+    if h.inBounds():
+      result[h.y][h.x] = 'X'
+  if st.cog.inBounds():
+    result[st.cog.y][st.cog.x] = '@'
+
+proc nearestCollectible*(st: LevelState): tuple[found: bool, at: Cell, dist: int] =
+  let field = distField(st.grid, routeCost(st.kind, 1), st.cog, @[],
+    ladderOnly(st.kind))
+  result = (false, st.cog, 0)
+  var best = Unreachable
+  for index in 0 ..< BoardCells:
+    if not st.grid.cells[index].collectible():
+      continue
+    let d = field[index]
+    if d < best:
+      best = d
+      result = (true, cellAt(index), d)
+
+proc seatViewJson*(episode: Episode, includeNotes = true): string =
+  ## Everything the seat may legitimately know, in tiles, integers only.
+  ## `includeNotes` is off for the copy the `directive` replay record carries,
+  ## which the design note defines as "the observation minus `your_notes`".
+  ##
+  ## HIDDEN, explicitly and by test: the level's seed and every other level's
+  ## seed; whether this level (or any level) is `seen` or `unseen`, and the
+  ## counts of each; the kind, seed and split of levels not yet played; the
+  ## RNG states; the seat's real policy/player name; and the running
+  ## seen/unseen/gap numbers and therefore `scores[0]`.
+  let st = episode.level
+  var rows = newJArray()
+  for row in observationRows(st):
+    rows.add(%row)
+  var hunters = newJArray()
+  for h in st.hunters:
+    hunters.add(%[h.x, h.y])
+  var falling = newJArray()
+  if st.falling.len == BoardCells:
+    for index in 0 ..< BoardCells:
+      if st.falling[index]:
+        let c = cellAt(index)
+        falling.add(%[c.x, c.y])
+  var actions = newJArray()
+  for symbol in ActionAlphabet:
+    let plan = applyAction(st, symbol)
+    actions.add(%*{
+      "a": $symbol,
+      "to": [plan.target.x, plan.target.y],
+      "legal": plan.legal,
+      "effect": $plan.effect,
+      "kills": plan.kills
+    })
+  var done = newJArray()
+  for i in 0 ..< episode.levelIndex - 1:
+    done.add(%*{
+      "index": i + 1,
+      "kind": $episode.plan[i].kind,
+      "outcome": $episode.outcomes[i],
+      "return": episode.returns[i]
+    })
+  let
+    nearest = nearestCollectible(st)
+    exitDistance = st.distanceToExit()
+  var view = %*{
+    "level": {
+      "index": episode.levelIndex, "of": episode.plan.len,
+      "kind": $st.kind, "w": BoardW, "h": BoardH,
+      "difficulty": $st.difficulty
+    },
+    "turn": st.levelTurn + 1,
+    "turns_left_this_level":
+      max(0, episode.config.turnsPerLevel - st.levelTurn),
+    "frame": st.frame,
+    "frames_per_turn": episode.config.framesPerTurn,
+    "map": rows,
+    "legend": {
+      "#": "bedrock", ":": "dirt", "O": "boulder", "*": "gem",
+      "o": "pellet", "+": "locked exit", "E": "open exit", "=": "platform",
+      "H": "ladder", "^": "spikes", ".": "empty", "@": "you", "X": "hunter"
+    },
+    "you": {
+      "at": [st.cog.x, st.cog.y],
+      "last_dir": $DirNames[ord(st.lastDir)],
+      "alive": st.alive,
+      "jump_fuel": st.jumpFuel,
+      "fall_depth": st.fallDepth,
+      "dash_cooldown": st.dashCooldown
+    },
+    "collected": st.collected,
+    "collect_total": st.collectTotal,
+    "exit_open": st.grid.at(st.exitAt) == tExitOpen,
+    "exit_at": [st.exitAt.x, st.exitAt.y],
+    "exit_distance": (if exitDistance >= Unreachable: -1 else: exitDistance),
+    "hunters": hunters,
+    "falling": falling,
+    "actions": actions,
+    "levels_done": done
+  }
+  if includeNotes:
+    view["your_notes"] = %episode.seat.notes
+  if nearest.found:
+    view["nearest_gem"] = %[nearest.at.x, nearest.at.y]
+    view["nearest_gem_distance"] = %nearest.dist
+  $view
+
+proc recordViewJson*(episode: Episode): string =
+  ## The `view` field of the turn's `directive` chat record: the observation
+  ## the seat was shown, MINUS its own `your_notes` (design note §Record and
+  ## event vocabulary A). Built from the state as it stands BEFORE the plan
+  ## runs, which is the state the seat was answering about.
+  ##
+  ## It is the one field of that record with no rune cap of its own, so it is
+  ## also the field `boundedDirectiveRecord` drops first when a record would
+  ## exceed `MaxDirectiveRunes`.
+  episode.seatViewJson(includeNotes = false)
+
+# ---------------------------------------------------------------------------
 #  Scoring — design note §Scoring formula and sign
 # ---------------------------------------------------------------------------
 

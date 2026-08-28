@@ -59,6 +59,9 @@ proc runScriptedEpisodeWith*(config: GameConfig, kind: Baseline,
       var order = scriptedPlanWith(episode.level, tuning,
         config.framesPerTurn, config.fallLethal)
       let turnIndex = episode.turnsUsed + 1
+      ## The state the plan was chosen from, which is what the `directive`
+      ## record's `view` field carries — captured before the plan runs.
+      let viewJson = episode.recordViewJson()
       let played = episode.applyPlan(order.moves)
       order.executed = played.executed
       events.add(played.events)
@@ -66,7 +69,7 @@ proc runScriptedEpisodeWith*(config: GameConfig, kind: Baseline,
         replay.frames.add(ReplayFrame(action: played.bytes[i],
           hash: played.hashes[i]))
       replay.chats.add(boundedDirectiveRecord(order, turnIndex,
-        episode.levelIndex, cogAlias(0), ""))
+        episode.levelIndex, cogAlias(0), viewJson))
       directives.add(DirectiveEvent(turn: turnIndex,
         level: episode.levelIndex, alias: cogAlias(0), source: $order.source,
         moves: order.moves, executed: order.executed,

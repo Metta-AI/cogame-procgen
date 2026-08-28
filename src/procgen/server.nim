@@ -418,6 +418,9 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
 
         var order = engine.order
         let turnIndex = episode.turnsUsed + 1
+        ## The observation the seat was answering about, captured BEFORE the
+        ## plan runs: it is the `view` field of this turn's directive record.
+        let viewJson = episode.recordViewJson()
         let played = episode.applyPlan(order.moves)
         order.executed = played.executed
         allEvents.add(played.events)
@@ -430,7 +433,7 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
           episode.seat.sayFramesLeft = max(1, config.sayFrames)
           inc episode.seat.saidTurns
         replay.chats.add(boundedDirectiveRecord(order, turnIndex,
-          episode.levelIndex, cogAlias(0), ""))
+          episode.levelIndex, cogAlias(0), viewJson))
         directiveEvents.add(DirectiveEvent(turn: turnIndex,
           level: episode.levelIndex, alias: cogAlias(0),
           source: $order.source, moves: order.moves,

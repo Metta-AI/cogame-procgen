@@ -5,8 +5,9 @@
 ## per-turn loop shape: the budget guard, the rate floor, the batch call with
 ## `attempt1Ms` / `retryMs` / `turnBudgetMs`, the throttle fail-fast, the
 ## final fallback ladder and its `cause` enum, and the exact `falling back`
-## log phrase phase 60 greps. Only `seatViewJson`, the parse call and the
-## fallback baseline change.
+## log phrase phase 60 greps. Only the observation (`seatViewJson`, which
+## lives in `sim.nim` so the replay record can build it without libcurl), the
+## parse call and the fallback baseline change.
 ##
 ## Cadence: ONE batch per turn carrying ONE request. Procgen is a single-seat
 ## sequential game, so the batch degenerates to a batch of one — deliberately
@@ -24,7 +25,7 @@
 
 import std/[json, monotimes, os, strutils, times]
 import curly
-import baselines, control, directives, levels, llm, path, records, sim, tiles
+import baselines, control, directives, levels, llm, records, sim, tiles
 export records
 
 type
@@ -58,116 +59,6 @@ proc initDecisionEngine*(config: GameConfig): DecisionEngine =
 
 proc policyKind*(engine: DecisionEngine): string =
   if engine.seat.isLlm: "llm" else: "scripted"
-
-# ---------------------------------------------------------------------------
-#  The per-seat observation
-# ---------------------------------------------------------------------------
-
-proc observationRows*(st: LevelState): seq[string] =
-  ## The nine 15-character rows, with the cog drawn as `@` and every hunter as
-  ## `X`. It is the WHOLE level: this game is fully observed.
-  result = st.grid.gridRows()
-  for h in st.hunters:
-    if h.inBounds():
-      result[h.y][h.x] = 'X'
-  if st.cog.inBounds():
-    result[st.cog.y][st.cog.x] = '@'
-
-proc nearestCollectible*(st: LevelState): tuple[found: bool, at: Cell, dist: int] =
-  let field = distField(st.grid, routeCost(st.kind, 1), st.cog, @[],
-    ladderOnly(st.kind))
-  result = (false, st.cog, 0)
-  var best = Unreachable
-  for index in 0 ..< BoardCells:
-    if not st.grid.cells[index].collectible():
-      continue
-    let d = field[index]
-    if d < best:
-      best = d
-      result = (true, cellAt(index), d)
-
-proc seatViewJson*(episode: Episode): string =
-  ## Everything the seat may legitimately know, in tiles, integers only.
-  ##
-  ## HIDDEN, explicitly and by test: the level's seed and every other level's
-  ## seed; whether this level (or any level) is `seen` or `unseen`, and the
-  ## counts of each; the kind, seed and split of levels not yet played; the
-  ## RNG states; the seat's real policy/player name; and the running
-  ## seen/unseen/gap numbers and therefore `scores[0]`.
-  let st = episode.level
-  var rows = newJArray()
-  for row in observationRows(st):
-    rows.add(%row)
-  var hunters = newJArray()
-  for h in st.hunters:
-    hunters.add(%[h.x, h.y])
-  var falling = newJArray()
-  if st.falling.len == BoardCells:
-    for index in 0 ..< BoardCells:
-      if st.falling[index]:
-        let c = cellAt(index)
-        falling.add(%[c.x, c.y])
-  var actions = newJArray()
-  for symbol in ActionAlphabet:
-    let plan = applyAction(st, symbol)
-    actions.add(%*{
-      "a": $symbol,
-      "to": [plan.target.x, plan.target.y],
-      "legal": plan.legal,
-      "effect": $plan.effect,
-      "kills": plan.kills
-    })
-  var done = newJArray()
-  for i in 0 ..< episode.levelIndex - 1:
-    done.add(%*{
-      "index": i + 1,
-      "kind": $episode.plan[i].kind,
-      "outcome": $episode.outcomes[i],
-      "return": episode.returns[i]
-    })
-  let
-    nearest = nearestCollectible(st)
-    exitDistance = st.distanceToExit()
-  var view = %*{
-    "level": {
-      "index": episode.levelIndex, "of": episode.plan.len,
-      "kind": $st.kind, "w": BoardW, "h": BoardH,
-      "difficulty": $st.difficulty
-    },
-    "turn": st.levelTurn + 1,
-    "turns_left_this_level":
-      max(0, episode.config.turnsPerLevel - st.levelTurn),
-    "frame": st.frame,
-    "frames_per_turn": episode.config.framesPerTurn,
-    "map": rows,
-    "legend": {
-      "#": "bedrock", ":": "dirt", "O": "boulder", "*": "gem",
-      "o": "pellet", "+": "locked exit", "E": "open exit", "=": "platform",
-      "H": "ladder", "^": "spikes", ".": "empty", "@": "you", "X": "hunter"
-    },
-    "you": {
-      "at": [st.cog.x, st.cog.y],
-      "last_dir": $DirNames[ord(st.lastDir)],
-      "alive": st.alive,
-      "jump_fuel": st.jumpFuel,
-      "fall_depth": st.fallDepth,
-      "dash_cooldown": st.dashCooldown
-    },
-    "collected": st.collected,
-    "collect_total": st.collectTotal,
-    "exit_open": st.grid.at(st.exitAt) == tExitOpen,
-    "exit_at": [st.exitAt.x, st.exitAt.y],
-    "exit_distance": (if exitDistance >= Unreachable: -1 else: exitDistance),
-    "hunters": hunters,
-    "falling": falling,
-    "actions": actions,
-    "levels_done": done,
-    "your_notes": episode.seat.notes
-  }
-  if nearest.found:
-    view["nearest_gem"] = %[nearest.at.x, nearest.at.y]
-    view["nearest_gem_distance"] = %nearest.dist
-  $view
 
 # ---------------------------------------------------------------------------
 #  The turn
