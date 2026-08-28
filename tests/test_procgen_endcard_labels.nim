@@ -23,15 +23,18 @@ const
   Forbidden = ["Lives", "LIVES", "Clstr", "Cap<", "flag", "heart", "paint",
                "hopper", "hill", "POV", "spray", "grenade", "med kit",
                "kill ", "HP pips", "RED", "BLUE", "Team"]
-  ## The enumerated replacements. Each must be PRESENT; a caption that is
-  ## both a markup default and a JS assignment legitimately appears twice, so
-  ## the assertion that carries the weight is the forbidden list above — the
-  ## starter's word must be GONE, and the replacement must be there.
-  Replacements = ["Unseen mean", "Seen mean", "SEEN vs UNSEEN",
-                  "Generating levels&hellip;", "Before the first level",
-                  "deaths / level results / final score",
-                  "<span class=\"lvl-label\">Level</span>",
-                  "<span class=\"gem-label\">Gems</span>"]
+  ## The enumerated replacements and the EXACT number of times each may
+  ## appear. The note says "present exactly once"; one caption is both a
+  ## markup default and the value the clock line assigns before the first
+  ## level, so its number is two and it is written down here rather than
+  ## waved through by a `>= 1`. A replacement that starts appearing twice is
+  ## a copy-paste of chrome, which is what this count catches.
+  Replacements = [("Unseen mean", 1), ("Seen mean", 1),
+                  ("SEEN vs UNSEEN", 1), ("Generating levels&hellip;", 1),
+                  ("Before the first level", 2),
+                  ("deaths / level results / final score", 1),
+                  ("<span class=\"lvl-label\">Level</span>", 1),
+                  ("<span class=\"gem-label\">Gems</span>", 1)]
 
 proc codeLines(text: string): seq[string] =
   ## Comment blocks are excluded: the starter's comments explain what was
@@ -62,10 +65,10 @@ block:
         check word notin line,
           "44: " & path & " still says `" & word & "`: " & line.strip()
 
-# ...and each replacement is present exactly once -----------------------------
+# ...and each replacement appears exactly the number of times it should ------
 block:
   let page = readFile(PagePath)
-  for text in Replacements:
+  for (text, want) in Replacements:
     var count = 0
     var at = 0
     while true:
@@ -74,8 +77,9 @@ block:
         break
       inc count
       at = found + 1
-    check count >= 1,
-      "44: the re-mapped string `" & text & "` is missing"
+    check count == want,
+      "44: the re-mapped string `" & text & "` appears " & $count &
+        " times, not " & $want
   ## The mismatch line names the frame, as the note re-maps it.
   check "Replay hash mismatch at frame" in page,
     "44: #mmwarn names the divergent FRAME"
