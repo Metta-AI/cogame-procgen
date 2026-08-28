@@ -29,7 +29,7 @@ type
 
 const
   ## THE SWEPT PICK, not a guess. `tools/tune_baselines.nim --sweep` plays a
-  ## fixed 24-episode ladder over a bounded matrix and prints each candidate's
+  ## fixed twelve-pair ladder over a bounded matrix and prints each candidate's
   ## margin; these are the numbers that won it, recorded in
   ## `tools/ci/baseline_tuning.json` and asserted by
   ## `tests/test_procgen_control.nim`.

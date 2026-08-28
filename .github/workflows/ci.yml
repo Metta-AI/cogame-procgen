@@ -112,9 +112,11 @@ jobs:
 
       - name: Sweep and verify the scripted-baseline tuning
         # The tunables are SWEPT, NOT GUESSED. --sweep prints the whole matrix
-        # over the fixed 24-episode ladder (that record is what pins the
-        # shipped pick); --check fails if the shipped constants have drifted
-        # from tools/ci/baseline_tuning.json.
+        # over the fixed twelve-pair ladder -- four seeds on each of three
+        # difficulties, each pair played by both baselines, so 24 episode runs
+        # and 12 measurements (that record is what pins the shipped pick);
+        # --check fails if the shipped constants have drifted from
+        # tools/ci/baseline_tuning.json.
         run: |
           set -euo pipefail
           nim r --hints:off -d:release --path:src tools/tune_baselines.nim \

@@ -1,5 +1,10 @@
-## Sweep the two scripted baselines over the fixed 24-episode ladder and check
-## the shipped pick against tools/ci/baseline_tuning.json.
+## Sweep the two scripted baselines over the fixed ladder and check the
+## shipped pick against tools/ci/baseline_tuning.json.
+##
+## THE LADDER IS TWELVE PAIRS: four seeds on each of the three difficulties,
+## each pair played by BOTH baselines on the SAME seed, so it is 24 episode
+## runs and 12 measurements. The margin is the mean per-pair difference, so
+## `episodes` in the recorded JSON is the PAIR count, 12.
 ##
 ## The tunables are SWEPT, NOT GUESSED: `--sweep` prints every candidate's
 ## margin over the ladder (four seeds on each of the three difficulties, each

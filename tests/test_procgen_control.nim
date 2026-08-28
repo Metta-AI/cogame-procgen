@@ -192,7 +192,7 @@ block:
       s{"detourBudget"}.getInt() == ScavengerTunables.detourBudget,
       "25: the shipped scavenger tunables ARE the recorded pick"
     ## The margin band itself is asserted by `tools/tune_baselines.nim --check`
-    ## in ci.yml, which replays the whole 24-episode ladder; repeating that
+    ## in ci.yml, which replays the whole twelve-pair ladder; repeating that
     ## ladder in every test file would triple the suite's runtime for the same
     ## assertion.
     check recorded.hasKey("marginMin") and recorded.hasKey("marginMax"),

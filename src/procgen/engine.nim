@@ -113,10 +113,11 @@ proc ladderConfig*(difficulty: string, seed: int): GameConfig =
   result.turnSpacingMs = 0
 
 proc ladderTotals*(pathfinder, scavenger: Tunables): LadderTotals =
-  ## The recorded 24-episode ladder: four seeds on each of the three
-  ## difficulties, each played twice — once by each baseline, on the SAME
-  ## seed, so the margin is a measurement of the policies and not of the
-  ## draws.
+  ## The recorded ladder: four seeds on each of the three difficulties — 12
+  ## pairs — each pair played twice, once by each baseline, on the SAME seed,
+  ## so the margin is a measurement of the policies and not of the draws.
+  ## That is 24 episode runs and 12 measurements: `episodes` counts the PAIRS,
+  ## which is what `ladderMargin` divides by.
   for difficulty in LadderDifficulties:
     for seed in 1 .. LadderSeeds:
       let config = ladderConfig(difficulty, seed * LadderSeedStride)
