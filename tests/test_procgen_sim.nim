@@ -415,11 +415,39 @@ block:
   check played.episode.plan.len == 8, "13: a full eight-level episode ran"
   check played.episode.totalFrames > 0, "13: the episode played frames"
   ## A whole hard, all-scripted episode is integer work over 135 tiles. The
-  ## budget is generous because CI runs this file in DEBUG as well as release,
-  ## and a debug build is an order of magnitude slower.
+  ## outer budget is generous because CI runs this file in DEBUG as well as
+  ## release, and a debug build is an order of magnitude slower.
   check elapsed < 60000,
     "13: a full hard scripted episode completes well inside the turn budget (" &
       $elapsed & " ms)"
+  echo "13: episode ", elapsed, " ms (", played.episode.totalFrames, " frames)"
+  ## The note's own two numbers, which only mean anything in a build with the
+  ## checks off: the whole episode in under a second...
+  when defined(release):
+    check elapsed < 1000,
+      "13: a release build plays the whole hard episode in under a second (" &
+        $elapsed & " ms)"
+
+  ## ...and no single FRAME over a millisecond. Timed on the resolver itself,
+  ## one symbol at a time, over every archetype at `hard` — the same
+  ## `stepFrame` the episode above runs, so this is the per-frame half of the
+  ## same budget rather than a second implementation of it.
+  var worstNs = 0
+  for kind in LevelKind.low .. LevelKind.high:
+    var st = newLevel(kind, 4242, dfHard)
+    var i = 0
+    while i < 240 and st.alive and not st.finished:
+      let symbol = "RDLUX."[i mod 6]
+      let frameStart = getMonoTime()
+      discard stepFrame(st, symbol, 1, 4)
+      let took = (getMonoTime() - frameStart).inNanoseconds.int
+      if took > worstNs:
+        worstNs = took
+      inc i
+  echo "13: worst single frame ", worstNs, " ns"
+  when defined(release):
+    check worstNs < 1000000,
+      "13: no single frame exceeds 1 ms (worst " & $worstNs & " ns)"
 
 if failures > 0:
   quit("test_procgen_sim: " & $failures & " failures", 1)
