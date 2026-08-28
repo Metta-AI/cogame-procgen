@@ -1662,7 +1662,7 @@ body[data-embed] #board { top: 0; height: 100%; }
   color: var(--paper);
   flex: 0 0 auto;
 }
-.plate .gem-label, .plate .lvl-label {
+.plate .gem-label {
   font-family: var(--finefont);
   font-size: calc(8 * var(--u));
   letter-spacing: 0.14em;
@@ -1688,8 +1688,7 @@ body[data-embed] #board { top: 0; height: 100%; }
    360 px a plate is narrow, and a fixed-size label is what pushes the numeral
    off the end. flex-shrink is the whole mechanism. */
 #scorebug .plate .cog-alias,
-#scorebug .plate .gem-label,
-#scorebug .plate .lvl-label {
+#scorebug .plate .gem-label {
   /* These do NOT shrink: a label squeezed to its first letter ("L", "G",
      "cc") is worse than no label, and under 640 px -- the featured-match
      iframe -- they are hidden outright by the rules at the end of this
@@ -1746,11 +1745,10 @@ body[data-embed] #board { top: 0; height: 100%; }
 
 /* ---- 360 px: the featured-match iframe is the real target ---- */
 @media (max-width: 640px) {
-  .plate .cog-alias, .plate .gem-label, .plate .lvl-label { display: none; }
+  .plate .cog-alias, .plate .gem-label { display: none; }
 }
 #stage.tiny .plate .cog-alias,
-#stage.tiny .plate .gem-label,
-#stage.tiny .plate .lvl-label { display: none; }
+#stage.tiny .plate .gem-label { display: none; }
 /* Under .tiny the SEEN/UNSEEN chip becomes a 3px underline on the level chip
    and the fallback glyph moves inline, so the plate keeps only alias + name +
    level chip + gems. */
@@ -1840,7 +1838,6 @@ body[data-embed] #board { top: 0; height: 100%; }
         (split ? '<span class="split-chip ' + split + '">' + split +
           '</span>' : '') +
       '</span>' +
-      '<span class="lvl-label">Level</span>' +
       '<span class="gem-num">' + (p.collected || 0) + '/' + (p.total || 0) +
         '</span>' +
       '<span class="gem-label">Gems</span>' +
