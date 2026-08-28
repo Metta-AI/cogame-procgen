@@ -1,7 +1,10 @@
 ## Parsing the runtime `game_config` into a `GameConfig`.
 ##
 ## Forked from `coworld-ctf`'s `src/ctf/sim_config.nim`. Every key here is a
-## declared property of `coworld_manifest_template.json`'s `config_schema`;
+## declared property of `coworld_manifest_template.json`'s `config_schema` —
+## `tests/test_procgen_manifest.nim` block 36 reads the key list out of THIS
+## file and cross-checks it, because that schema is closed and an undeclared
+## key is a game_config the platform validator rejects;
 ## unknown keys are ignored rather than fatal, and out-of-range values are
 ## clamped rather than rejected, because a config that fails to parse is an
 ## episode that never starts.

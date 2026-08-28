@@ -205,6 +205,16 @@
           "minimum": 1,
           "maximum": 1,
           "default": 1
+        },
+        "model": {
+          "type": "string",
+          "description": "The Anthropic model the seat's prompt policy is asked through. Parsed by src/procgen/sim_config.nim; declared here because config_schema is closed."
+        },
+        "maxOutputTokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192,
+          "description": "Cap on the model's reply length. A plan is six symbols, a say is 24 runes and a note is 160, so the default 900 is already generous."
         }
       }
     },

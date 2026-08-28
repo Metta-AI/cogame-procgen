@@ -56,7 +56,8 @@ type
 
   GameConfig* = object
     ## The runtime config, parsed from `COGAME_CONFIG_URI`. Every field is
-    ## also a `config_schema` property in `coworld_manifest_template.json`.
+    ## also a `config_schema` property in `coworld_manifest_template.json`,
+    ## cross-checked by `tests/test_procgen_manifest.nim` block 36.
     seed*: int
     levelCount*: int
     turnsPerLevel*: int

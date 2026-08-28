@@ -91,6 +91,45 @@ block:
         "36: config_schema." & name & " needs minItems and maxItems"
   check m{"game"}{"config_schema"}{"additionalProperties"}.getBool() == false,
     "36: config_schema is closed"
+
+  ## ...and BECAUSE it is closed, every key `sim_config.update` reads must be
+  ## declared in it, or a game_config that sets that key is rejected by the
+  ## platform validator before the episode starts. The key list is read out of
+  ## the parser itself rather than copied here, so a new knob cannot be added
+  ## on one side only (the review's F20: `model` and `maxOutputTokens` were
+  ## parsed and undeclared).
+  let parser = readFile("src/procgen/sim_config.nim")
+  var parsed: seq[string]
+  for getter in ["node.getIntOr(", "node.getStrOr(", "node.getBoolOr("]:
+    var at = 0
+    while true:
+      let found = parser.find(getter, at)
+      if found < 0:
+        break
+      at = found + getter.len
+      var i = at
+      while i < parser.len and parser[i] in {' ', '\n', '\r', '\t'}:
+        inc i
+      if i < parser.len and parser[i] == '"':
+        var key = ""
+        inc i
+        while i < parser.len and parser[i] != '"':
+          key.add(parser[i])
+          inc i
+        if key.len > 0 and key notin parsed:
+          parsed.add(key)
+  check parsed.len >= 20,
+    "36: the config_schema cross-check really read the parser (" &
+      $parsed.len & " keys)"
+  for key in parsed:
+    check m{"game"}{"config_schema"}{"properties"}.hasKey(key),
+      "36: sim_config parses `" & key & "` but config_schema does not " &
+        "declare it, and the schema is CLOSED"
+  ## The two keys the runner injects are read structurally, not through the
+  ## getters, so they are named here.
+  for key in ["tokens", "players"]:
+    check m{"game"}{"config_schema"}{"properties"}.hasKey(key),
+      "36: config_schema declares " & key
   var required: seq[string]
   for entry in m{"game"}{"config_schema"}{"required"}:
     required.add(entry.getStr())
