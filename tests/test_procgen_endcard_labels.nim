@@ -29,7 +29,9 @@ const
   ## starter's word must be GONE, and the replacement must be there.
   Replacements = ["Unseen mean", "Seen mean", "SEEN vs UNSEEN",
                   "Generating levels&hellip;", "Before the first level",
-                  "deaths / level results / final score"]
+                  "deaths / level results / final score",
+                  "<span class=\"lvl-label\">Level</span>",
+                  "<span class=\"gem-label\">Gems</span>"]
 
 proc codeLines(text: string): seq[string] =
   ## Comment blocks are excluded: the starter's comments explain what was
