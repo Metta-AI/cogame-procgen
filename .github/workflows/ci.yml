@@ -400,7 +400,11 @@ jobs:
       - name: Run the EXACT emitted wasm module headless
         # wasm32-only failures (integer traps, address-space exhaustion) are
         # invisible to the native 64-bit shards. This runs the module the
-        # bundle ships against the replay docker-smoke just produced.
+        # bundle ships against the replay docker-smoke just produced AND
+        # against the committed fixtures, which were recorded by an earlier
+        # build: the first proves the current format round-trips, the second
+        # proves this build still agrees with the one that recorded them
+        # (design note §Tests 49).
         run: |
           set -euo pipefail
           replay=""
@@ -410,6 +414,14 @@ jobs:
           test -n "${replay}"
           node tools/wasm_replay_smoke.cjs dist/static-replay-viewer \
             "${replay}" 300
+          for fixture in tests/fixtures/*.replay; do
+            test -f "${fixture}" || {
+              echo "::error::no committed replay fixtures in tests/fixtures"
+              exit 1; }
+            echo "fixture: ${fixture}"
+            node tools/wasm_replay_smoke.cjs dist/static-replay-viewer \
+              "${fixture}" 150
+          done
 
       - name: Drive the shipped page with a worst-case renderer fixture
         # docker_smoke.sh runs with NO ANTHROPIC_API_KEY, so the seat in the

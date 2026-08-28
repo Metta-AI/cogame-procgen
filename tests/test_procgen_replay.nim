@@ -18,6 +18,87 @@ proc cfg(seed: int, levelCount = 8): GameConfig =
   result.levelCount = levelCount
   result.turnSpacingMs = 0
 
+# ---------------------------------------------------------------------------
+#  The committed fixtures (design note §Tests, numbered block 49)
+#
+#  Four recordings live in tests/fixtures/. They are the only replays in this
+#  repo that were written by an EARLIER build, which is the whole point: the
+#  in-process re-derivation below proves this build agrees with itself, and a
+#  committed fixture proves it still agrees with the build that recorded it.
+#  A rules change, a generator change or a wire change that is not accompanied
+#  by a GameVersion bump turns the hash chain red here.
+#
+#  RECIPE DISCIPLINE (the starter's, AGENTS.md §Replay fixtures): a recipe
+#  pins EVERY field its ending depends on, so re-recording is mechanical:
+#
+#    nim r --path:src tests/test_procgen_replay.nim --write
+#
+#  Re-record on a GameVersion bump, and in the same commit as any deliberate
+#  change to the rules or to the recorded stream.
+# ---------------------------------------------------------------------------
+
+type FixtureRecipe = object
+  name: string
+  seed, levelCount, turnsPerLevel, framesPerTurn, fallLethal: int
+  difficulty: string
+  interruptOnDanger: bool
+  baseline: Baseline
+  stopAfterTurn: int
+  reason: EndReason
+  rule: EndRule
+
+const Fixtures = [
+  # The certification fixture's own configuration, seed and all.
+  FixtureRecipe(name: "gauntlet-seed42", seed: 42, levelCount: 8,
+    turnsPerLevel: 10, framesPerTurn: 6, fallLethal: 4,
+    difficulty: "standard", interruptOnDanger: true, baseline: blPathfinder,
+    stopAfterTurn: 0, reason: rsComplete, rule: erGauntletComplete),
+  # The `sprint` variant: four levels, fourteen turns each.
+  FixtureRecipe(name: "sprint-seed7", seed: 7, levelCount: 4,
+    turnsPerLevel: 14, framesPerTurn: 6, fallLethal: 4,
+    difficulty: "standard", interruptOnDanger: true, baseline: blScavenger,
+    stopAfterTurn: 0, reason: rsComplete, rule: erGauntletComplete),
+  # The `hardpool` variant: three hunters, more spikes, more boulders.
+  FixtureRecipe(name: "hard-seed13", seed: 13, levelCount: 8,
+    turnsPerLevel: 10, framesPerTurn: 6, fallLethal: 4,
+    difficulty: "hard", interruptOnDanger: true, baseline: blPathfinder,
+    stopAfterTurn: 0, reason: rsComplete, rule: erGauntletComplete),
+  # A wall-clock stop mid-gauntlet: the ending the sim cannot re-derive, so
+  # the `stop` record has to come back off the bytes.
+  FixtureRecipe(name: "deadline-seed21", seed: 21, levelCount: 8,
+    turnsPerLevel: 10, framesPerTurn: 6, fallLethal: 4,
+    difficulty: "standard", interruptOnDanger: true, baseline: blPathfinder,
+    stopAfterTurn: 9, reason: rsDeadline, rule: erWallClock)]
+
+proc recipeConfig(recipe: FixtureRecipe): GameConfig =
+  result = defaultGameConfig()
+  result.seed = recipe.seed
+  result.levelCount = recipe.levelCount
+  result.turnsPerLevel = recipe.turnsPerLevel
+  result.framesPerTurn = recipe.framesPerTurn
+  result.fallLethal = recipe.fallLethal
+  result.difficulty = recipe.difficulty
+  result.interruptOnDanger = recipe.interruptOnDanger
+  result.turnSpacingMs = 0
+  result.playerNames = @["daveey"]
+
+proc recordFixture(recipe: FixtureRecipe): string =
+  let played = runScriptedEpisodeWith(recipeConfig(recipe), recipe.baseline,
+    tunablesFor(recipe.baseline), stopAfterTurn = recipe.stopAfterTurn,
+    stopReason = recipe.reason, stopEndRule = recipe.rule)
+  encodeReplay(played.replay)
+
+proc fixturePath(recipe: FixtureRecipe): string =
+  "tests/fixtures/" & recipe.name & ".replay"
+
+if paramCount() >= 1 and paramStr(1) == "--write":
+  createDir("tests/fixtures")
+  for recipe in Fixtures:
+    writeFile(recipe.fixturePath(), recordFixture(recipe))
+    echo "wrote ", recipe.fixturePath(), " (",
+      getFileSize(recipe.fixturePath()), " bytes)"
+  quit(0)
+
 # 32. record then re-derive, EVERY end reason --------------------------------
 block:
   ## The particle-worlds scar: a wall-clock stop is a fact the sim cannot
@@ -144,6 +225,49 @@ block:
       let replay = decodeReplay(readFile(file))
       check replay.gameVersion == GameVersion,
         "35: " & file & " carries a stale GameVersion"
+
+# 49. the committed fixtures still replay -----------------------------------
+block:
+  for recipe in Fixtures:
+    let path = recipe.fixturePath()
+    if not fileExists(path):
+      check false, "49: " & path & " is missing -- record it with " &
+        "`nim r --path:src tests/test_procgen_replay.nim --write`"
+      continue
+    let committed = readFile(path)
+    check committed.len > 0, "49: " & recipe.name & " is not empty"
+    var rt = loadReplay(committed)
+    check rt.replay.gameVersion == GameVersion,
+      "49: " & recipe.name & " carries the current GameVersion"
+    ## The load-bearing one: this build re-generates every level from the
+    ## recorded seeds and re-runs the recorded action bytes, and the hash
+    ## chain still matches at EVERY frame.
+    check rt.mismatchFrame < 0,
+      "49: " & recipe.name & " re-derives frame by frame (first divergence " &
+        $rt.mismatchFrame & ")"
+    check rt.episode.plan.len == recipe.levelCount,
+      "49: " & recipe.name & " plays its recipe's level count"
+    if recipe.stopAfterTurn > 0:
+      check rt.stopEndRule == $recipe.rule,
+        "49: " & recipe.name & "'s recorded stop comes back off the bytes"
+    ## ...and recording it again from the recipe produces the same episode:
+    ## the same action stream and the same per-frame hashes. This is what
+    ## catches a SILENT rules or generator change -- one that would otherwise
+    ## only show up as a hosted replay that no longer matches its recording.
+    let fresh = decodeReplay(recordFixture(recipe))
+    check fresh.frames.len == rt.replay.frames.len,
+      "49: " & recipe.name & " replays the same number of frames (" &
+        $fresh.frames.len & " vs " & $rt.replay.frames.len & ")"
+    var drift = -1
+    for i in 0 ..< min(fresh.frames.len, rt.replay.frames.len):
+      if fresh.frames[i].action != rt.replay.frames[i].action or
+          fresh.frames[i].hash != rt.replay.frames[i].hash:
+        drift = i
+        break
+    check drift < 0,
+      "49: " & recipe.name & " diverges from its recipe at frame " & $drift &
+        " -- if the change was deliberate, re-record with --write in the " &
+        "same commit"
 
 if failures > 0:
   quit("test_procgen_replay: " & $failures & " failures", 1)
