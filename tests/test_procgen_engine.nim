@@ -89,12 +89,17 @@ block:
     " cleared=", cleared, " died-or-timeup=", lost,
     " outcomes=", played.episode.outcomes,
     " returns=", played.episode.returns
-  ## The CI smoke replay must OUTLAST the 10 s viewer soak: at
-  ## renderFramesPerStep 4 and 24 fps that is 6 sim frames a second, so 180
-  ## frames is 30 s of playback.
-  check played.episode.totalFrames >= 180,
-    "27: seed 42 runs at least 180 sim frames (got " &
-      $played.episode.totalFrames & ")"
+  ## The CI smoke replay must OUTLAST the 10 s viewer soak (the ecos
+  ## 2026-08-23 scar: a replay shorter than the soak window legitimately ends
+  ## and the last interval cannot advance). At renderFramesPerStep 4 and 24
+  ## fps that is 6 sim frames a second, so the floor is 90 frames = 15 s of
+  ## playback with half as much again in hand. The design note's estimate of
+  ## 180 frames assumed ~45 frames a level; the shipped `pathfinder` clears a
+  ## level in ~25, so seed 42's four levels measure ~102 frames — 17 s, which
+  ## is what the soak actually needs.
+  check played.episode.totalFrames >= 90,
+    "27: seed 42 runs at least 90 sim frames -- 15 s of playback, over the " &
+      "10 s soak (got " & $played.episode.totalFrames & ")"
   check collects >= 1, "27: at least one collect"
   check exitOpens >= 1, "27: at least one exitopen"
   check cleared >= 1, "27: at least one level ends cleared"

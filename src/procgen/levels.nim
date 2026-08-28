@@ -416,6 +416,11 @@ proc minerFallScan(st: var LevelState, events: var seq[FrameEvent],
       if st.grid.at(below) != tEmpty:
         st.falling[index] = false
         continue
+      if below == st.cog and not st.falling[index]:
+        ## A boulder RESTING on the cog does not kill it — it rests. Only a
+        ## boulder that was ALREADY falling may enter the cog's cell, and that
+        ## one crushes it (design note §Turn structure, hazards).
+        continue
       st.grid.setTile(here, tEmpty)
       st.grid.setTile(below, t)
       st.falling[index] = false

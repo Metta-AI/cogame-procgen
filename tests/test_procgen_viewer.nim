@@ -5,7 +5,7 @@
 ## assertions are what make that checkable.
 
 import std/[os, sha1, strutils]
-import procgen/[levels, sim_types, tiles]
+import procgen/[events, levels, sim_types, tiles]
 
 var failures = 0
 proc check(ok: bool, what: string) =

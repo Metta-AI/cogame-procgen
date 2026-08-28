@@ -92,7 +92,7 @@ proc procgenPacketLength(): cint {.exportc: "procgen_packet_len", cdecl.} =
 
 proc procgenMismatchTick(): cint {.exportc: "procgen_mismatch_tick", cdecl.} =
   if runtimeLoaded:
-    cint(runtime.mismatchTurn)
+    cint(runtime.mismatchFrame)
   else:
     -1
 

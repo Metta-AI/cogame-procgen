@@ -45,10 +45,14 @@ block:
 
 block:
   ## The renderer's own preloader must name the same kit.
+  ## The renderer preloads the SPRITE KIT. The floor wash, the palette and
+  ## the font are not sprites: the wash and the palette are drawn
+  ## procedurally in the bake's colours and the font is loaded as a FontFace.
   let core = readFile("client/broadcast_core.js")
-  for file in allArtFiles():
-    if not file.endsWith(".png"):
-      continue
+  var kit = tileSpriteFiles()
+  kit.add(entitySpriteFiles())
+  kit.add(cogSpriteFiles())
+  for file in kit:
     let name = file[0 ..< file.len - 4]
     check ("'" & name & "'") in core,
       "art: broadcast_core.js preloads " & name

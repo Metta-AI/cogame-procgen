@@ -321,7 +321,7 @@ block:
     "#...........+.#",
     "###############"]))
   chaser.cog = cell(7, 2)
-  chaser.frame = 2                       ## the next frame is a hunter rest
+  chaser.frame = 0                       ## the next frame is a hunter STEP
   discard stepFrame(chaser, '.', 1, 4)
   check chaser.dangerInterrupt(),
     "8: chaser interrupts with a hunter at Chebyshev 1"
