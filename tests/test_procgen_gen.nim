@@ -5,11 +5,17 @@
 ## SEED COUNTS. The note asks for 500 seeds on block 14 and 5000 per archetype
 ## per difficulty on block 15. `ci.yml` runs every test file TWICE — once in
 ## debug, where the bounds-checked build is an order of magnitude slower — so
-## the sweeps here are 150 and 400 seeds respectively, which is 6600 whole
-## level generations per run and still finds a generator that is wrong on one
-## seed in a hundred. The full sweep is the same loop with a bigger bound:
-##   nim r -d:release --path:src tests/test_procgen_gen.nim
-## takes the wide numbers when SWEEP_WIDE is set.
+## the DEFAULT sweeps here are 150 and 400 seeds respectively, which is 6600
+## whole level generations per run and still finds a generator that is wrong
+## on one seed in a hundred.
+##
+## The note's own numbers run on every push as well, in their own release-only
+## `ci.yml` step ("The WIDE generator sweep"), which is this same loop with
+## SWEEP_WIDE set:
+##   SWEEP_WIDE=1 nim r -d:release --path:src tests/test_procgen_gen.nim
+## That is 6000 purity draws and 60000 validation draws, and it is where
+## `genFallbacks == 0` is asserted over the note's 5000 seeds per archetype
+## per difficulty.
 
 import std/os
 import procgen/[gen, levels, path, sim, tiles]

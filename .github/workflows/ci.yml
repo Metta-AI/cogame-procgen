@@ -170,6 +170,19 @@ jobs:
           done
           exit "${fail}"
 
+      - name: The WIDE generator sweep (design note tests 14 and 15)
+        # tests/test_procgen_gen.nim runs a narrow sweep (150 purity seeds,
+        # 400 validation seeds per archetype per difficulty) in the loop above
+        # because that loop runs every file in DEBUG as well as release. The
+        # note's numbers are 500 and 5000, which is 6000 purity draws and
+        # 60000 validation draws -- 3 s in a release build, so it runs here,
+        # once per push, and `genFallbacks == 0` is asserted over the note's
+        # 60000 seeds rather than over 4800.
+        run: |
+          set -euo pipefail
+          SWEEP_WIDE=1 nim r --hints:off -d:release --path:src \
+            tests/test_procgen_gen.nim
+
       - uses: astral-sh/setup-uv@v6
 
       - name: Validate the manifest under the installed coworld CLI
