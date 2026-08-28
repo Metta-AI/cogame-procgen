@@ -19,6 +19,18 @@ proc deathPhrase*(cause: DeathCause, alias: string): string =
 
 proc kindWord*(kind: LevelKind): string = ($kind).toUpperAscii()
 
+proc dangerWord*(kind: LevelKind): string =
+  ## What the danger interrupt was looking at, named per archetype (design
+  ## note §Why a turn is a plan): a hunter within one tile in `chaser`, a
+  ## falling boulder in the cog's column in `miner`, a free fall in `climber`.
+  ## `maze` has no hazards and never interrupts, so its phrase is the generic
+  ## one the spike rule would use.
+  case kind
+  of lkChaser: "hunter alongside"
+  of lkMiner: "boulder overhead"
+  of lkClimber: "falling"
+  of lkMaze: "danger alongside"
+
 proc feedRow*(e: FrameEvent, kind: LevelKind, outcome: LevelOutcome): string =
   ## One plain-language match-feed row, or an empty string for a kind the feed
   ## does not carry.
@@ -37,9 +49,11 @@ proc feedRow*(e: FrameEvent, kind: LevelKind, outcome: LevelOutcome): string =
       cause = parseEnum[DeathCause](e.text)
     except ValueError:
       discard
-    deathPhrase(cause, alias) & " — level over"
+    ## The frame is the one the scrubber is on, so a spectator reading the
+    ## feed can go back to it.
+    deathPhrase(cause, alias) & " — level over at " & $e.abs
   of ekInterrupt:
-    "plan cut short — danger alongside"
+    "plan cut short — " & dangerWord(kind)
   of ekLevelEnd:
     case outcome
     of loCleared: alias & " clears " & kindWord(kind) & " — " & $e.value
@@ -59,8 +73,9 @@ proc feedRow*(e: FrameEvent, kind: LevelKind, outcome: LevelOutcome): string =
 const LabelVocabulary* = [
   "LEVEL ", " of ", "takes gem ", "takes pellet ", "the exit unlocks",
   "a hunter catches ", " falls into the pit", " steps on the spikes",
-  "a boulder lands on ", " is out", " — level over",
-  "plan cut short — danger alongside",
+  "a boulder lands on ", " is out", " — level over at ",
+  "plan cut short — hunter alongside", "plan cut short — boulder overhead",
+  "plan cut short — falling", "plan cut short — danger alongside",
   " clears ", " is out on ", " runs out of turns on ",
   "MISSED THE CALL — pathfinder plan",
   "GAUNTLET OVER — unseen mean ",
