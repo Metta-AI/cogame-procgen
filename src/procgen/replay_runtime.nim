@@ -221,6 +221,12 @@ proc preScan*(rt: var ReplayRuntime) =
         rt.episode.level.foldState(rt.episode.levelIndex) != recorded.hash:
       rt.mismatchFrame = absIndex
     if planRun == 1 and turnIndex >= 0:
+      ## The same `plan` event the live stream emits from `applyPlan`, derived
+      ## here from the recorded turn spans so the two streams are identical.
+      rt.events.add(FrameEvent(kind: ekPlan, level: rt.episode.levelIndex,
+        turn: turnNumber, frame: rt.episode.level.frame, abs: absIndex,
+        at: rt.episode.level.cog, value: rt.turns[turnIndex].executed,
+        text: moves))
       if rt.turns[turnIndex].say.len > 0:
         rt.says[absIndex] = rt.turns[turnIndex].say
         rt.events.add(FrameEvent(kind: ekSay, level: rt.episode.levelIndex,

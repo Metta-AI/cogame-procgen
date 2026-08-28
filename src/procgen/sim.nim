@@ -145,6 +145,15 @@ proc beginLevel*(episode: var Episode): seq[FrameEvent] =
   if episode.levelIndex >= episode.plan.len:
     return @[]
   inc episode.levelIndex
+  if episode.levelIndex == 1:
+    ## `gamestart` — the first thing the episode's event stream says, and the
+    ## only event that describes the GAUNTLET rather than a level: how many
+    ## levels, how many turns each, and the difficulty they were all drawn at.
+    ## It makes no beat and no feed row (design note §Record and event
+    ## vocabulary B).
+    result.add(FrameEvent(kind: ekGameStart, level: 0, frame: 0,
+      value: episode.plan.len, extra: episode.config.turnsPerLevel,
+      text: normalizedDifficulty(episode.config.difficulty)))
   let planned = episode.plan[episode.levelIndex - 1]
   episode.level = newLevel(planned.kind, planned.seed,
     episode.config.difficultyOf())
@@ -201,6 +210,17 @@ proc applyPlan*(episode: var Episode, moves: string): PlanResult =
   inc episode.turnsUsed
   episode.level.spikeAdjacentAtPlan = episode.level.spikeAdjacent(
     episode.level.cog)
+  ## `plan` — the turn's symbols, emitted the moment the plan is installed and
+  ## before its first frame runs, so the plan trail and the tier-2 stream can
+  ## both see what was committed to even if the first frame kills the cog. The
+  ## SOURCE (llm | scripted | fallback) is a fact about the decision, not about
+  ## the level, so it rides the `directive` record and the tier-2 `directive`
+  ## row for the same turn — the sim cannot derive it, and an event that is
+  ## derived from state must be identical live and in replay.
+  result.events.add(FrameEvent(kind: ekPlan, level: episode.levelIndex,
+    turn: episode.level.levelTurn, frame: episode.level.frame,
+    at: episode.level.cog, value: min(moves.len, episode.config.framesPerTurn),
+    text: moves))
   let limit = min(moves.len, episode.config.framesPerTurn)
   for i in 0 ..< limit:
     let symbol = moves[i]

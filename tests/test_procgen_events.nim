@@ -4,7 +4,8 @@
 ## the appended viewer block consumes is in the set.
 
 import std/[json, os, strutils]
-import procgen/[baselines, engine, events, levels, sim]
+import procgen/[baselines, engine, events, levels, records, replay_runtime,
+                replays, sim]
 
 var failures = 0
 proc check(ok: bool, what: string) =
@@ -56,9 +57,55 @@ block:
       if $kind == name:
         known = true
     check known, "46: the episode emitted an unknown kind: " & name
-  for name in ["levelstart", "step", "levelend", "gauntletend", "end"]:
+  for name in ["gamestart", "levelstart", "plan", "step", "collect",
+               "exitopen", "levelend", "gauntletend", "end"]:
     check name in emitted,
       "46: a real episode emits " & name & " (got " & $emitted & ")"
+  ## The kinds a SCRIPTED episode cannot produce are the two that are facts
+  ## about a decision rather than about the level -- `say` and `fallback`,
+  ## which a baseline never makes -- plus the archetype-specific ones a
+  ## particular seed may not reach. They are derived from the recorded chat
+  ## records by the replay runtime, asserted below.
+  for name in ["say", "fallback"]:
+    check name notin emitted,
+      "46: a scripted episode makes no " & name & " event"
+
+# ...and the REPLAYED stream, which is what the viewer draws, emits the same --
+block:
+  var config = defaultGameConfig()
+  config.seed = 2468
+  config.turnSpacingMs = 0
+  var played = runScriptedEpisode(config, blPathfinder)
+  ## A say and a fallback record, which only a live LLM seat writes, so the
+  ## two kinds the sim cannot derive are exercised on the path that derives
+  ## them: the pre-scan reads them off the recorded chats.
+  played.replay.chats.add(fallbackRecord(1, 2, "timeout", "no reply"))
+  for i, record in played.replay.chats:
+    if "\"k\":\"directive\"" in record and "\"turn\":1," in record:
+      var node = parseJson(record)
+      node["say"] = %"digging under the rock"
+      played.replay.chats[i] = $node
+  let rt = loadReplay(encodeReplay(played.replay))
+  var emitted: seq[string]
+  for e in rt.events:
+    if $e.kind notin emitted:
+      emitted.add($e.kind)
+  for name in ["gamestart", "levelstart", "plan", "step", "levelend",
+               "say", "fallback", "gauntletend"]:
+    check name in emitted,
+      "46: the replayed stream emits " & name & " (got " & $emitted & ")"
+  for name in emitted:
+    var known = false
+    for kind in EventKind.low .. EventKind.high:
+      if $kind == name:
+        known = true
+    check known, "46: the replayed stream emitted an unknown kind: " & name
+
+block:
+  var config = defaultGameConfig()
+  config.seed = 2468
+  config.turnSpacingMs = 0
+  let played = runScriptedEpisode(config, blPathfinder)
 
   ## The tier-2 stream: sixteen kinds, each with a wire key, plus the
   ## mandatory trailing summary row.
