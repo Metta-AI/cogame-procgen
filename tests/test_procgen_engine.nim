@@ -94,16 +94,15 @@ block:
   ## The CI smoke replay must OUTLAST the 10 s viewer soak (the ecos
   ## 2026-08-23 scar: a replay shorter than the soak window legitimately ends
   ## and the last interval cannot advance). At renderFramesPerStep 4 and 24
-  ## fps that is 6 sim frames a second, so the floor is 90 frames = 15 s of
-  ## playback with half as much again in hand. The design note's estimate of
-  ## 180 frames assumed ~45 frames a level; the shipped `pathfinder` plays a
-  ## level in ~25, so the fixture runs the full EIGHT-level gauntlet rather
-  ## than four — which is what buys the note's stated ~30 s of playback.
-  check played.episode.totalFrames >= 90,
-    "27: seed 42 runs at least 90 sim frames -- 15 s of playback, over the " &
-      "10 s soak (got " & $played.episode.totalFrames & ")"
+  ## fps that is 6 sim frames a second, so 180 frames is 30 s of playback.
+  ## The shipped `pathfinder` plays a level in ~25 frames, which is why the
+  ## fixture runs the full EIGHT-level gauntlet rather than four.
+  check played.episode.totalFrames >= 180,
+    "27: seed 42 runs at least 180 sim frames (got " &
+      $played.episode.totalFrames & ")"
   check collects >= 1, "27: at least one collect"
   check exitOpens >= 1, "27: at least one exitopen"
+  check deaths >= 1, "27: at least one death, so the death beat is exercised"
   check cleared >= 1, "27: at least one level ends cleared"
   check lost >= 1, "27: and at least one ends died or timeup"
 
