@@ -140,6 +140,11 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
   var
     attempt = 0
     open = true
+    lastCause = "parse_error"
+      ## Why the MOST RECENT attempt failed. The final fallback below reports
+      ## it verbatim: a transport deadline that expired is `timeout`, not
+      ## `parse_error`, and a forensic reader of the game log has to be able
+      ## to tell those two apart.
   while open and attempt < 2:
     if engine.client.disabled:
       break
@@ -147,6 +152,7 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
       result.add(fallbackRecord(turnIndex, attempt + 1, "timeout",
         "per-turn budget exhausted before attempt " & $(attempt + 1)))
       noteFallback("timeout")
+      lastCause = "timeout"
       break
     let deadlineMs =
       if attempt == 0: episode.config.attempt1Ms else: episode.config.retryMs
@@ -188,6 +194,7 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
                    "timeout" else: "transport_error")
       elif error.msg.startsWith("llm throttled"):
         cause = "throttled"
+      lastCause = cause
       result.add(fallbackRecord(turnIndex, attempt + 1, cause, error.msg))
       ## `will retry` — NEVER `falling back`: only a genuine fallback may say
       ## that, because phase 60 greps the game log for it.
@@ -211,7 +218,7 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
         "no_credentials"
       elif engine.llmOff: "budget_guard"
       elif engine.client.throttled: "throttled"
-      else: "parse_error"
+      else: lastCause
     result.add(fallbackRecord(turnIndex, 2, cause,
       "seat fell back to the pathfinder plan"))
     noteFallback(cause)
