@@ -33,7 +33,15 @@ const
   ## margin; these are the numbers that won it, recorded in
   ## `tools/ci/baseline_tuning.json` and asserted by
   ## `tests/test_procgen_control.nim`.
-  PathfinderTunables* = Tunables(lookaheadFrames: 6, digCost: 3,
+  ##
+  ## `digCost` is 1, not the design note's illustrative 3. The note's own rule
+  ## is that these are SWEPT and that the shipped defaults must equal the
+  ## recorded pick, and the sweep is unambiguous: at digCost 3 `pathfinder`
+  ## routes around dirt it should be digging through, clears 13 of 16 unseen
+  ## levels and LOSES the ladder to `scavenger` by -0.010; at digCost 1 it
+  ## clears 16 of 16 and wins by +0.038. A careful baseline that is measurably
+  ## worse than the greedy one is not the careful baseline.
+  PathfinderTunables* = Tunables(lookaheadFrames: 6, digCost: 1,
     commitFrames: 6, detourBudget: 6, exitFirst: false)
   ## `scavenger`'s knobs are the design note's table and are deliberately NOT
   ## optimised: it is the player a champion should be able to beat, so tuning

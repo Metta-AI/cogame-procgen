@@ -72,7 +72,9 @@ block:
   let m = manifest()
   var config = configFrom(m{"certification"}{"game_config"})
   check config.seed == 42, "27: the fixture pins seed 42"
-  check config.levelCount == 4, "27: the fixture plays four levels"
+  check config.levelCount == 8,
+    "27: the fixture plays the full eight-level gauntlet, so the smoke " &
+    "replay is ~30 s of playback"
   let played = runScriptedEpisode(config, blPathfinder)
   var collects, exitOpens, deaths, cleared, lost = 0
   for e in played.events:
@@ -94,9 +96,9 @@ block:
   ## and the last interval cannot advance). At renderFramesPerStep 4 and 24
   ## fps that is 6 sim frames a second, so the floor is 90 frames = 15 s of
   ## playback with half as much again in hand. The design note's estimate of
-  ## 180 frames assumed ~45 frames a level; the shipped `pathfinder` clears a
-  ## level in ~25, so seed 42's four levels measure ~102 frames — 17 s, which
-  ## is what the soak actually needs.
+  ## 180 frames assumed ~45 frames a level; the shipped `pathfinder` plays a
+  ## level in ~25, so the fixture runs the full EIGHT-level gauntlet rather
+  ## than four — which is what buys the note's stated ~30 s of playback.
   check played.episode.totalFrames >= 90,
     "27: seed 42 runs at least 90 sim frames -- 15 s of playback, over the " &
       "10 s soak (got " & $played.episode.totalFrames & ")"

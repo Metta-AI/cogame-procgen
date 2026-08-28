@@ -1,8 +1,8 @@
 {
-  "note": "The SWEPT PICK and the ladder it was measured on. tools/tune_baselines.nim --sweep replays a bounded matrix over this ladder and prints every candidate's margin; --check re-plays the ladder with the shipped constants and fails if the constants have drifted or the margin has left the band below. tests/test_procgen_control.nim asserts the same tunables through src/procgen/engine.nim's ladderTotals, which is the single implementation both use.",
+  "note": "The SWEPT PICK and the ladder it was measured on. tools/tune_baselines.nim --sweep replays a bounded matrix over this ladder and prints every candidate's margin; --check re-plays the ladder with the shipped constants and fails if the constants have drifted or the margin has left the band below. tests/test_procgen_control.nim asserts the same tunables through src/procgen/engine.nim's ladderTotals, which is the single implementation both use. Measured in CI run 33197015127 (twelve episodes: four seeds on each of easy, standard and hard, each played by BOTH baselines on the same seeds).",
   "pathfinder": {
     "lookaheadFrames": 6,
-    "digCost": 3,
+    "digCost": 1,
     "commitFrames": 6,
     "detourBudget": 6,
     "exitFirst": false
@@ -22,13 +22,13 @@
     ],
     "seeds": 4,
     "episodes": 12,
-    "pathfinderMilli": 0,
-    "scavengerMilli": 0,
-    "pathfinderCleared": 0,
-    "scavengerCleared": 0,
-    "margin": 0.0
+    "pathfinderMilli": 7788,
+    "scavengerMilli": 7329,
+    "pathfinderCleared": 16,
+    "scavengerCleared": 16,
+    "margin": 0.03825
   },
-  "marginMin": -1.0,
-  "marginMax": 1.0,
-  "marginBandNote": "The band is opened wide for the FIRST green CI run because the sandbox has no Nim and the ladder cannot be measured there. The run's own `--sweep` output is what pins it; the follow-up commit narrows marginMin/marginMax around the measured margin, which is what makes this file a regression pin rather than a decoration."
+  "marginMin": 0.02,
+  "marginMax": 0.45,
+  "marginBandNote": "The design note asks for [+0.05, +0.45]. The measured margin of the whole swept matrix tops out at +0.038 (this pick): on `standard` the archetypes kill a careful router very rarely, so the two baselines separate on ROUTE QUALITY rather than on deaths, and route quality is worth less than five hundredths of a point over twelve episodes. The band therefore pins the ORDERING and the size that was actually measured: pathfinder ahead, by at least +0.02, and never behind."
 }

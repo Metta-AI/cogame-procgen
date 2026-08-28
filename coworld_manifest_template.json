@@ -549,7 +549,7 @@
       ],
       "num_agents": 1,
       "minPlayers": 1,
-      "levelCount": 4,
+      "levelCount": 8,
       "turnsPerLevel": 10,
       "framesPerTurn": 6,
       "difficulty": "standard",
