@@ -1,16 +1,37 @@
 // broadcast_core.js — procgen board renderer + frame-packet client.
 //
-// FORKED from coworld-ctf's client/broadcast_core.js. That file is paintbot's
-// continuous-2-D draw layer over the Bitworld sprite protocol; this game is a
-// 15 x 9 integer tile grid, so the sprite/layer compositor, every weapon,
-// paint, hill, flag and fog draw call, the first-person pipeline and the whole
-// zoom/pan/minimap surface are DELETED (design note §Viewer -> Chrome
-// provenance: #viewpanel goes entirely — every level in every archetype is the
-// same fixed rectangle with no off-frame area). What is KEPT is the shape the
-// page depends on: the same `window.BroadcastCore.create` factory and the same
-// method surface, the canvas/DPR sizing, the letterbox fit and its
-// `onTransform` callback, the status/text callbacks, the first-frame signal
-// and the pace stats.
+// PROVENANCE, precisely, because "forked" is too kind a word for this one
+// file. coworld-ctf's client/broadcast_core.js is paintbot's continuous-2-D
+// draw layer over the Bitworld sprite protocol: a Snappy sprite-sheet
+// decoder, a layer compositor and per-object blits. This game is a 15 x 9
+// integer tile grid drawn from a JSON frame packet, so NONE of that draw code
+// survives — this file is a REWRITE of the draw layer against the starter's
+// interface, not a line-level fork of its body. What is PINNED against the
+// starter is the interface the page depends on and nothing else: the
+// `window.BroadcastCore.create` factory, the method surface (`ingest`,
+// `sendCommand`, `setViewportSize`, `setViewportFit`, `getTransform`,
+// `getPaceStats`, `start`, `stop`), the canvas/DPR sizing, the letterbox fit
+// and its `onTransform` callback, the status/text callbacks, the first-frame
+// signal and the pace stats. tests/test_procgen_viewer.nim block 40 asserts
+// that surface.
+//
+// The design note's "kept and pinned function-by-function" list — `pushFeed`
+// and its signature, `banner`, the feed queue, the beat and lull machinery,
+// the endcard builder, the speed chips, the `?embed=1` path — names procs
+// that do NOT live in this file in EITHER repo. `pushFeed(row)`, `banner`,
+// `clearFeed`, `seekToFraction` and `relayout()` live in the inherited head of
+// client/replay_broadcast.html (which IS the starter's page, minus the
+// enumerated removals, plus one appended block); `markBeat`,
+// `ingestLullSpans`, `renderLullSpans` and the speed chips live in
+// client/chrome_common.js, which is byte-identical to the starter's. Those are
+// where they are pinned (test 39 for the byte identity, test 40 for the head's
+// signatures), and this file must never define any of them — test 41.
+//
+// DELETED with the sprite layer: every weapon, paint, hill, flag and fog draw
+// call, the first-person pipeline and the whole zoom/pan/minimap surface
+// (design note §Viewer -> Chrome provenance: #viewpanel goes entirely — every
+// level in every archetype is the same fixed rectangle with no off-frame
+// area).
 //
 // ADDED: drawTiles, drawCog (four facings, a jump squash and a dig pose),
 // drawEntities (gems, pellets, boulders with a fall streak, hunters with eyes,

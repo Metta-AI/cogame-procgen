@@ -72,12 +72,32 @@ block:
     "40: and the INHERITED head is what calls install(PB_CTX)"
   check "window.ProcgenChrome.frame(s, PB_CTX, jumped)" in head,
     "40: the starter's frame hook drives it, with the same signature"
-  ## broadcast_core.js keeps the factory and the method surface the page
-  ## depends on.
+  ## The procs the note's "kept and pinned function-by-function" list names
+  ## are not in broadcast_core.js in EITHER repo: the feed queue, the banner
+  ## queue and the seek helper live in the inherited HEAD of this page, and
+  ## the beat/lull machinery and the speed chips live in chrome_common.js,
+  ## which is byte-identical (block 39). Pin them where they actually are —
+  ## `pushFeed`'s SIGNATURE included (the cogball 0.1.4 latch scar).
+  for needle in ["function pushFeed(row)", "function clearFeed()",
+                 "function banner(text, cls)", "function pumpBanner()",
+                 "function clearBanners()", "function seekToFraction",
+                 "function relayout()", "function dismissLockerRoom",
+                 "?embed=1"]:
+    check needle in head,
+      "40: the inherited head still owns " & needle
+  let chrome = readFile(ChromeCommonPath)
+  for needle in ["markBeat", "ingestLullSpans", "renderLullSpans",
+                 "renderTransport", "speedchips"]:
+    check needle in chrome,
+      "40: the beat/lull machinery and the speed chips stay in the " &
+        "byte-identical chrome_common.js: " & needle
+  ## broadcast_core.js is a REWRITE of the draw layer, so what is pinned in it
+  ## is the interface: the factory, the method surface and the canvas/DPR
+  ## sizing the page drives it through.
   for needle in ["window.BroadcastCore", "create: function (config)",
                  "ingest:", "sendCommand:", "setViewportSize:",
                  "setViewportFit:", "getTransform:", "getPaceStats:",
-                 "onFirstFrame", "onTransform"]:
+                 "onFirstFrame", "onTransform", "devicePixelRatio"]:
     check needle in core, "40: broadcast_core keeps " & needle
 
 # 41. no shadowed chrome aliases ---------------------------------------------
