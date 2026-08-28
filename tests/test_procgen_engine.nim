@@ -3,7 +3,7 @@
 ## (design note §Tests, numbered blocks 11 and 26-31).
 
 import std/[json, os, sets, strutils]
-import procgen/[baselines, decide, directives, engine, events, levels,
+import procgen/[baselines, decide, directives, engine, events, global, levels,
                 records, replays, runtime, server, sim, sim_types]
 
 var failures = 0
@@ -288,6 +288,46 @@ block:
       config.wallClockBudgetSeconds - 20,
       "30: naming how much wall clock was left"
   check decider.haveOrder, "30: the seat still has a plan after the guard"
+
+# the live /global state reads what the seat said, and draws the split bar ---
+block:
+  ## `seat.say` / `sayFramesLeft` are set by the server on every turn that
+  ## carries a remark; before this they were written and never read, and
+  ## `/global` shipped an empty `bubbles` array and no split bar at all.
+  var config = defaultGameConfig()
+  config.seed = 31
+  config.turnSpacingMs = 0
+  var episode = newEpisode(config)
+  discard episode.beginLevel()
+  var live = parseJson(liveStateJson(episode, true))
+  check live{"bubbles"}.len == 0, "global: no bubble before anybody speaks"
+  check live{"chrome"}{"splitbar"}{"bars"}.len == episode.plan.len,
+    "global: the split bar carries one bar per level"
+  check live{"chrome"}{"splitbar"}{"bars"}[0]{"split"}.getStr() in
+    ["seen", "unseen"],
+    "global: and each bar knows which half it is"
+
+  const Remark = "digging under the rock"
+  episode.seat.say = Remark
+  episode.seat.sayFramesLeft = config.sayFrames
+  live = parseJson(liveStateJson(episode, true))
+  check live{"bubbles"}.len == 1 and
+    live{"bubbles"}[0]{"text"}.getStr() == Remark,
+    "global: the say is drawn above the cog"
+  check live{"bubbles"}[0]{"x"}.getInt() == episode.level.cog.x and
+    live{"bubbles"}[0]{"y"}.getInt() == episode.level.cog.y,
+    "global: at the cog"
+
+  ## ...and it expires, because applyPlan counts the frames down.
+  var guard = 0
+  while episode.seat.sayFramesLeft > 0 and guard < 8 and
+      not episode.levelDone():
+    inc guard
+    discard episode.applyPlan("......")
+  check episode.seat.sayFramesLeft == 0,
+    "global: sayFramesLeft is counted down by the frames that run"
+  live = parseJson(liveStateJson(episode, true))
+  check live{"bubbles"}.len == 0, "global: and the bubble comes down with it"
 
 # 31. the certifier's browser probes -----------------------------------------
 block:

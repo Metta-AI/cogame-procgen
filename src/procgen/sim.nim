@@ -230,6 +230,12 @@ proc applyPlan*(episode: var Episode, moves: string): PlanResult =
     result.hashes.add(episode.level.foldState(episode.levelIndex))
     inc result.executed
     inc episode.totalFrames
+    ## The say bubble's life is measured in FRAMES (`sayFrames`), so it is
+    ## counted down by the only proc that runs frames. `/global` draws the
+    ## bubble while this is positive; the replay path derives the same window
+    ## from the recorded `say` in `broadcast.framePacket`.
+    if episode.seat.sayFramesLeft > 0:
+      dec episode.seat.sayFramesLeft
     if episode.level.finished or not episode.level.alive:
       break
     if episode.config.interruptOnDanger and episode.level.interrupted:
