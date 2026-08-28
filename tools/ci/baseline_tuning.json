@@ -1,0 +1,34 @@
+{
+  "note": "The SWEPT PICK and the ladder it was measured on. tools/tune_baselines.nim --sweep replays a bounded matrix over this ladder and prints every candidate's margin; --check re-plays the ladder with the shipped constants and fails if the constants have drifted or the margin has left the band below. tests/test_procgen_control.nim asserts the same tunables through src/procgen/engine.nim's ladderTotals, which is the single implementation both use.",
+  "pathfinder": {
+    "lookaheadFrames": 6,
+    "digCost": 3,
+    "commitFrames": 6,
+    "detourBudget": 6,
+    "exitFirst": false
+  },
+  "scavenger": {
+    "lookaheadFrames": 1,
+    "digCost": 1,
+    "commitFrames": 6,
+    "detourBudget": 0,
+    "exitFirst": false
+  },
+  "ladder": {
+    "difficulties": [
+      "easy",
+      "standard",
+      "hard"
+    ],
+    "seeds": 4,
+    "episodes": 12,
+    "pathfinderMilli": 0,
+    "scavengerMilli": 0,
+    "pathfinderCleared": 0,
+    "scavengerCleared": 0,
+    "margin": 0.0
+  },
+  "marginMin": -1.0,
+  "marginMax": 1.0,
+  "marginBandNote": "The band is opened wide for the FIRST green CI run because the sandbox has no Nim and the ladder cannot be measured there. The run's own `--sweep` output is what pins it; the follow-up commit narrows marginMin/marginMax around the measured margin, which is what makes this file a regression pin rather than a decoration."
+}

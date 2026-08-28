@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>procgen renderer fixture</title>
+<style>
+  html, body { margin: 0; background: #120d09; color: #f2e8d8;
+    font-family: system-ui, sans-serif; }
+  .frame { display: inline-block; margin: 4px; vertical-align: top; }
+  .frame span { font-size: 10px; color: #8a7f72; }
+  canvas { display: block; background: #16110d; }
+</style>
+</head>
+<body>
+<!--
+  The worst-case text chrome, driven against the SHIPPED renderer and the
+  SHIPPED page.
+
+  tools/ci/docker_smoke.sh runs with NO ANTHROPIC_API_KEY, so the seat in the
+  CI replay plays a scripted baseline and a scripted baseline emits no `say`
+  at all: the smoke replay carries ZERO LLM text, and nothing that plays it
+  can ever draw the say bubble (the cogchemists 2026-08-24 scar).
+
+  WHICH GATE COVERS WHICH SURFACE:
+
+    * ci.yml's "Load the bundle in a real browser" step runs the real static
+      bundle. That bundle draws in a WORKER on an OffscreenCanvas, and
+      viewer_smoke.mjs patches CanvasRenderingContext2D in the PAGE, so its
+      canvas_text totals are 0 there BY CONSTRUCTION. That step is the gate on
+      load, on advancement (--soak) and on the scrubber, NOT on text bounds.
+    * THIS fixture is the text-bounds gate. It loads the shipped
+      broadcast_core.js -- the same file the Worker imports, not a
+      re-implementation of it (the particle-worlds 2026-08-26 scar) -- on a
+      MAIN-THREAD canvas, so every fillText the renderer makes is measured. It
+      drives a full-cap 24-rune `say` on a cog standing on the TOP ROW (the
+      negative-y bubble case), an interrupted plan trail with its CUT tag, a
+      death flash, all four archetypes' tile sets and a full eight-bar split
+      bar with both mean lines, at 360, 640 and 1024 px.
+    * The fixture also mounts the shipped index.html in an iframe and drives
+      the page's OWN frame path, so the single scorebug plate, the seven beat
+      markers, the split-bar momentum series, the level banner, the match feed
+      and the endcard are exercised by the same code the hosted viewer runs.
+      It then asserts the endcard comes back DOWN on a seek to a mid-episode
+      frame.
+
+  Success is the same signal the real shell uses: data-replay-loaded="true" on
+  <html> once every frame has drawn and every chrome assertion has held. Any
+  failure sets data-replay-error, which viewer_smoke.mjs fails fast on.
+-->
+<div id="frames"></div>
+<iframe id="shell" src="./index.html" width="360" height="203"
+        style="border:0;opacity:0.001;position:absolute;left:-9999px"></iframe>
+<script src="./wire_constants.js"></script>
+<script src="./chrome_common.js"></script>
+<script src="./broadcast_core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var WIRE = window.PROCGEN_WIRE || {};
+  var CAP = WIRE.maxSayRunes || 24;
+  // Exactly the server's cap, in the widest characters the sanitiser allows.
+  var SAY = 'WWWWWWWWWWWWWWWWWWWWWWWW'.slice(0, CAP);
+  var W = WIRE.boardW || 15, H = WIRE.boardH || 9;
+  var NAME = 'daveey';
+  var ALIAS = 'COG-alpha';
+  var KINDS = ['maze', 'chaser', 'climber', 'miner'];
+  var FRAMES = 240;
+
+  function failed(message) {
+    document.documentElement.setAttribute('data-replay-error', message);
+  }
+
+  // Tile ordinals, from src/procgen/tiles.nim.
+  var EMPTY = 0, WALL = 1, DIRT = 2, BOULDER = 3, GEM = 4, PELLET = 5,
+      EXIT_LOCKED = 6, EXIT_OPEN = 7, PLATFORM = 8, LADDER = 9, SPIKE = 10;
+
+  function grid(kind) {
+    var cells = [];
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var ring = (x === 0 || y === 0 || x === W - 1 || y === H - 1);
+        var t = ring ? WALL : EMPTY;
+        if (!ring) {
+          if (kind === 'maze' && (x % 2 === 0 && y % 2 === 0)) t = WALL;
+          if (kind === 'miner') t = DIRT;
+          if (kind === 'climber' && (y === 5 || y === 2)) t = PLATFORM;
+          if (kind === 'climber' && (y === 5 || y === 6) && x === 7) t = LADDER;
+          if (kind === 'chaser' && x === 6 && y === 4) t = WALL;
+        }
+        cells.push(t);
+      }
+    }
+    function put(x, y, t) { cells[y * W + x] = t; }
+    put(3, 1, GEM);
+    put(9, 3, kind === 'chaser' ? PELLET : GEM);
+    put(11, 5, GEM);
+    put(5, 7, BOULDER);
+    put(4, 3, SPIKE);
+    put(W - 2, H - 2, EXIT_LOCKED);
+    return cells;
+  }
+
+  function splitBar() {
+    var bars = [];
+    for (var i = 0; i < 8; i++) {
+      bars.push({
+        level: i + 1, kind: KINDS[i % 4],
+        split: (i % 2 === 0) ? 'seen' : 'unseen',
+        seed: (i % 2 === 0) ? 1001 + i : 1836471221 + i,
+        'return': 200 + i * 90,
+        outcome: (i % 3 === 0) ? 'cleared' : (i % 3 === 1 ? 'died' : 'timeup'),
+        start: i * 30
+      });
+    }
+    return { bars: bars, seenMilli: 797, unseenMilli: 570, gapMilli: 227 };
+  }
+
+  function beats() {
+    return [
+      { t: 0, k: 'levelstart', label: 'Level 1 starts — click to jump here' },
+      { t: 12, k: 'collect', label: 'A collectible is taken — click to jump here' },
+      { t: 30, k: 'exitopen', label: 'The exit unlocks — click to jump here' },
+      { t: 55, k: 'fallback', label: 'The seat missed the call — click to jump here' },
+      { t: 70, k: 'death', label: 'The cog is killed — click to jump here' },
+      { t: 90, k: 'levelend', label: 'Level 1 ends — 640 — click to jump here' },
+      { t: FRAMES, k: 'gauntletend', label: 'The gauntlet is over — click to jump here' }
+    ];
+  }
+
+  function results() {
+    var kinds = [], splits = [], seeds = [], returns = [], outcomes = [],
+        collected = [], totals = [];
+    for (var i = 0; i < 8; i++) {
+      kinds.push(KINDS[i % 4]);
+      splits.push(i % 2 === 0 ? 'seen' : 'unseen');
+      seeds.push(i % 2 === 0 ? 1001 + i : 1836471221 + i);
+      returns.push(200 + i * 90);
+      outcomes.push(i % 3 === 0 ? 'cleared' : (i % 3 === 1 ? 'died' : 'timeup'));
+      collected.push(i % 5);
+      totals.push(i % 4 === 1 ? 8 : 4);
+    }
+    return {
+      names: [NAME], aliases: [ALIAS], scores: [0.570], win: [false],
+      reason: 'complete', endRule: 'gauntlet_complete', variant: 'gauntlet',
+      difficulty: 'standard', seed: 1734029581, levelCount: 8,
+      levelKinds: kinds, levelSplit: splits, levelSeeds: seeds,
+      levelReturns: returns, levelOutcome: outcomes,
+      levelDeathCause: ['', 'caught', '', '', '', 'crushed', '', ''],
+      levelFrames: [38, 26, 51, 60, 44, 47, 19, 55],
+      levelCollected: collected, levelCollectTotal: totals,
+      seenMilli: 797, unseenMilli: 570, gapMilli: 227,
+      seenCleared: 2, unseenCleared: 1, policyKinds: ['llm'],
+      llmTurns: 63, fallbackTurns: 2, ordersRejected: 1, planInterrupts: 11,
+      genFallbacks: 0, deadSeats: [false], stopDetail: ''
+    };
+  }
+
+  function chromeDoc(kind, frame, over) {
+    var lead = [];
+    for (var t = 0; t <= FRAMES; t += 30) {
+      lead.push([t, 700 + (t % 90), 500 + (t % 70)]);
+    }
+    return {
+      t: frame, st: 0, mx: FRAMES, mt: 0, ph: over ? 'gameover' : 'playing',
+      lob: 0, sp: 1, pl: true, lp: false, sk: false, ff: false, en: true,
+      over: over, level: 3, levels: 8, kind: kind, split: 'unseen',
+      seed: 908314772, difficulty: 'standard', turn: 4, turns: 10,
+      frame: 18, collected: 3, total: 4,
+      gauntletLine: '8 levels · standard · 2 seen / 1 unseen cleared',
+      mismatch: -1,
+      roster: [{
+        s: 0, name: NAME, alias: ALIAS, kind: 'llm', level: 3, of: 8,
+        split: 'unseen', collected: 3, total: 4, alive: true, fallback: true
+      }],
+      beats: beats(),
+      lulls: [[100, 130]],
+      lead: { teams: ['seen', 'unseen'], pts: lead },
+      splitbar: splitBar(),
+      feed: [
+        { k: 'say', row: ALIAS + ': "' + SAY + '"' },
+        { k: 'collect', row: ALIAS + ' takes gem 3 of 4' },
+        { k: 'exitopen', row: 'the exit unlocks' },
+        { k: 'fallback', row: ALIAS + ' MISSED THE CALL — pathfinder plan (timeout)' }
+      ],
+      results: over ? results() : null
+    };
+  }
+
+  function packet(kind, frame) {
+    return {
+      protocol: 'procgen/v1',
+      board: { w: W, h: H, cellPx: 32 },
+      alpha: 400,
+      grid: grid(kind),
+      // The cog stands on the TOP ROW: its bubble has nowhere above it to go
+      // and must ride the reserved band instead of a negative y.
+      cog: { x: 6, y: 1, px: 5, py: 1, dir: 1, alive: true, jump: 0,
+             fall: 0, dash: 0, finished: false, death: '' },
+      hunters: kind === 'chaser' ? [[10, 2], [3, 6]] : [],
+      falling: kind === 'miner' ? [[5, 7]] : [],
+      exit: { x: W - 2, y: H - 2, open: false },
+      collected: 3, total: 4,
+      // An INTERRUPTED plan: three of six symbols ran, so the tail greys out
+      // and the CUT tag is drawn.
+      plan: { moves: 'RRXDDL', run: 3, cut: true },
+      bubbles: [{ text: SAY, x: 6, y: 1 }],
+      flashes: [{ k: 'death', x: 7, y: 4 }, { k: 'collect', x: 3, y: 1 }],
+      chrome: chromeDoc(kind, frame, false)
+    };
+  }
+
+  var WIDTHS = [360, 640, 1024];
+  var host = document.getElementById('frames');
+  var drawn = 0;
+  KINDS.forEach(function (kind) {
+    WIDTHS.forEach(function (width) {
+      var wrap = document.createElement('div');
+      wrap.className = 'frame';
+      var label = document.createElement('span');
+      label.textContent = kind + ' @ ' + width + 'px';
+      var canvas = document.createElement('canvas');
+      var height = Math.round(width * 203 / 360);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      canvas.width = width;
+      canvas.height = height;
+      wrap.appendChild(label);
+      wrap.appendChild(canvas);
+      host.appendChild(wrap);
+      var core = window.BroadcastCore.create({
+        canvas: canvas, websocket: false,
+        viewportWidth: width, viewportHeight: height, devicePixelRatio: 1,
+        onText: function () { }, onStatus: function () { },
+        onFirstFrame: function () { drawn++; }
+      });
+      core.start();
+      core.ingest(JSON.stringify(packet(kind, 60)));
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // The shipped page's own chrome block, driven with the same real data.
+  // ---------------------------------------------------------------------
+  function driveShell(win) {
+    var drive = win.PROCGEN_DRIVE_FRAME;
+    if (typeof drive !== 'function') {
+      return 'the shipped page did not publish PROCGEN_DRIVE_FRAME';
+    }
+    drive(JSON.stringify(chromeDoc('miner', 60, false)));
+
+    var doc = win.document;
+    var plates = doc.querySelectorAll('#plates-l .plate');
+    if (plates.length !== 1) {
+      return 'the scorebug drew ' + plates.length + ' plates, not 1';
+    }
+    var names = doc.querySelectorAll('.plate-name');
+    if (!names.length || names[0].textContent !== NAME) {
+      return 'the scorebug plate does not carry the real policy name';
+    }
+    var markers = doc.querySelectorAll('#scrub .beat-marker');
+    if (markers.length !== beats().length) {
+      return 'the scrubber drew ' + markers.length + ' beat markers, not ' +
+        beats().length;
+    }
+    for (var i = 0; i < markers.length; i++) {
+      if (markers[i].tagName !== 'BUTTON' ||
+          !markers[i].getAttribute('aria-label')) {
+        return 'beat marker ' + i + ' is not a labelled button';
+      }
+    }
+    var momentum = doc.querySelector('#momentum');
+    if (!momentum || !momentum.childNodes.length) {
+      return 'the seen-vs-unseen graph drew nothing from the pre-scan series';
+    }
+    var feed = doc.querySelectorAll('#killfeed .feed-row');
+    if (!feed.length) return 'the match feed drew no rows';
+    var said = false;
+    for (var f = 0; f < feed.length; f++) {
+      if (feed[f].textContent.indexOf(SAY) >= 0) said = true;
+    }
+    if (!said) return 'the feed never drew the full-cap say row';
+    if (!doc.querySelector('#bannerlane .banner-chip.level')) {
+      return 'the level banner never fired on the level change';
+    }
+
+    // The endcard goes up at the end...
+    drive(JSON.stringify(chromeDoc('miner', FRAMES, true)));
+    var card = doc.querySelector('#endcard');
+    if (!card || card.className.indexOf('on') < 0) {
+      return 'the endcard did not come up on the final frame';
+    }
+    if (doc.querySelectorAll('#ec-teams .ec-row').length !== 8) {
+      return 'the endcard table is not eight rows';
+    }
+    if (!doc.querySelectorAll('#ec-teams .ec-row.unseen').length) {
+      return 'the endcard does not highlight the unseen rows';
+    }
+    var caps = doc.querySelectorAll('#endcard .fl-cap');
+    var capText = '';
+    for (var q = 0; q < caps.length; q++) capText += caps[q].textContent + '|';
+    if (capText.indexOf('Unseen mean') < 0 || capText.indexOf('Seen mean') < 0) {
+      return 'the endcard is missing the re-labelled captions: ' + capText;
+    }
+    if (doc.querySelector('#ec-headline').textContent.indexOf('0.570') < 0) {
+      return 'the endcard headline does not carry the unseen mean';
+    }
+    // ...and every seek takes it back down.
+    drive(JSON.stringify(chromeDoc('miner', 60, false)));
+    if (card.className.indexOf('on') >= 0) {
+      return 'the endcard stayed up after a seek back into the episode';
+    }
+    return '';
+  }
+
+  var shell = document.getElementById('shell');
+  var settled = false;
+  function settle() {
+    if (settled) return;
+    settled = true;
+    if (SAY.length !== CAP) {
+      failed('fixture say length ' + SAY.length + ' is not the server cap ' + CAP);
+      return;
+    }
+    if (drawn !== KINDS.length * WIDTHS.length) {
+      failed('only ' + drawn + ' of ' + (KINDS.length * WIDTHS.length) +
+        ' fixture frames drew');
+      return;
+    }
+    var why;
+    try {
+      why = driveShell(shell.contentWindow);
+    } catch (error) {
+      why = 'the shipped chrome threw: ' + (error && error.message || error);
+    }
+    if (why) { failed(why); return; }
+    document.documentElement.setAttribute('data-replay-loaded', 'true');
+  }
+  shell.addEventListener('load', function () { setTimeout(settle, 400); });
+  setTimeout(function () {
+    if (!settled) failed('the shipped index.html did not load in 20 s');
+  }, 20000);
+})();
+</script>
+</body>
+</html>

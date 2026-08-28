@@ -1,0 +1,35 @@
+[
+  {
+    "name": "procgen-cartographer",
+    "run": "/bin/procgen-player",
+    "env": {
+      "PLAYER_PROMPT": "Solve the level as a route, not as a reflex. Before you move, read the map rows and decide\nthe ORDER you will take the collectibles in: always the one whose path from where you\nstand is shortest, then re-decide from there. Write that order into \"notes\" as a list of\ncoordinates and follow it across turns, so you never re-plan from scratch and never oscillate\nbetween two gems.\nSpend your six moves on ONE leg of that route. If a leg is longer than six moves, take six\nand write the remaining waypoint into \"notes\"; do not try to be clever in the last two moves\nof a plan.\nIn maze levels commit hard: there is nothing that can hurt you, so use all six moves every\nturn and never wait. Dead ends cost you two moves; hesitation costs you a whole turn.\nIn chaser levels never plan a move that ends within two tiles of a hunter's current position,\nbecause a hunter takes two steps for every three of yours. Prefer routes that keep a pillar\nbetween you and the nearest hunter, and keep the dash for the single move that breaks a\npincer, not for making progress.\nIn climber levels treat every gap as a jump you must set up: face the way you are going with\none horizontal move, then X, then the horizontal moves that carry you across. Never step onto\n'^'. Never walk off a platform you cannot see the landing for; if the map shows more than\nfour empty tiles below you, that fall is fatal.\nIn miner levels dig DOWN and SIDEWAYS, never straight up under an 'O'. Before you take a gem\nwith a boulder above it, dig out a sideways escape tile first and put its coordinate in\n\"notes\". A boulder you pushed is a boulder that will fall the moment you leave the tile\nunder it.\nWhen every collectible is gone, stop optimising and walk the shortest path to 'E'.",
+      "PLAYER_POLICY_LABEL": "cartographer"
+    }
+  },
+  {
+    "name": "procgen-scrambler",
+    "run": "/bin/procgen-player",
+    "env": {
+      "PLAYER_PROMPT": "Assume you have never seen this level and never will again, so buy information cheaply and\nbank the guaranteed points early. The first 700 points are collectibles and they are the\nonly points that are certain; the 200 for approach and the 100 for the exit are what you take\nif the level lets you.\nTurn one is a survey turn in any level with hazards: take three or four moves toward the\nnearest collectible, not six, and use the extra turn to see what moved. In maze levels there\nis nothing to survey, so take six every time.\nRank the collectibles by (distance) + (danger), where danger is 4 per hunter within four\ntiles, 4 per boulder directly above the tile, and 4 per spike adjacent to the approach. Take\nthe cheapest first. If two are equal, take the one that leaves you closer to the exit tile,\nbecause approach points are free points you keep even if you die later.\nNever spend more than two turns on a single collectible. If it has cost you two turns it is\nguarded, and the other three are worth more than it is. Say so in \"notes\" and abandon it.\nIf you are down to one collectible and it is genuinely lethal to reach, do not reach it.\nWalk toward the locked exit instead and park next to it: 700x3/4 plus a full 200 for approach\nbeats 700 plus a death at zero approach.\nIn chaser levels move along walls, not through the middle, and count that a hunter closes one\ntile every turn and a half. In miner levels never stand under a column of dirt with an 'O'\nabove it, even two tiles up.\nPut one concrete fact in \"notes\" every turn - which gem you abandoned, which tile is a trap,\nwhich way the hunters came from. That note is the only memory you have.",
+      "PLAYER_POLICY_LABEL": "scrambler"
+    },
+    "player": "ply_bac48eb1-662e-44f8-973d-f3e016dccf5d"
+  },
+  {
+    "name": "procgen-pathfinder",
+    "run": "/bin/procgen-player",
+    "env": {
+      "PLAYER_SCRIPTED": "pathfinder",
+      "PLAYER_POLICY_LABEL": "pathfinder"
+    }
+  },
+  {
+    "name": "procgen-scavenger",
+    "run": "/bin/procgen-player",
+    "env": {
+      "PLAYER_SCRIPTED": "scavenger",
+      "PLAYER_POLICY_LABEL": "scavenger"
+    }
+  }
+]

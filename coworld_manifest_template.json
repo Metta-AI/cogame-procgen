@@ -1,0 +1,572 @@
+{
+  "$schema": "https://softmax.com/schemas/coworld-manifest.json",
+  "tags": [
+    "procgen",
+    "single-agent",
+    "generalisation",
+    "score-attack",
+    "grid"
+  ],
+  "episode_timeout_minutes": 20,
+  "game": {
+    "name": "procgen",
+    "owner": "daveey@softmax.com",
+    "description": "One cog, eight procedurally generated 15x9 tile levels in a row, four archetypes: a maze with gems behind a locked door, an open room of pellets patrolled by hunters, a stack of tiers over a lethal pit, and a wall of dirt hiding diamonds under falling boulders. Half the levels come from a seed table published in the repo; the other half are drawn out of two billion possibilities the moment the episode starts, and the cog is never told which is which. The score is the average return on the levels nobody has ever seen.",
+    "runnable": {
+      "type": "game",
+      "image": "{{PROCGEN_IMAGE}}",
+      "run": [
+        "/bin/procgen"
+      ],
+      "env": {
+        "ANTHROPIC_API_KEY_URI": "secret://coworld/procgen/anthropic_api_key"
+      }
+    },
+    "replay_viewer": {
+      "bundle": "static-replay-viewer"
+    },
+    "protocols": {
+      "player": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/cogame-procgen/blob/main/docs/PROTOCOL.md"
+      },
+      "global": {
+        "type": "uri",
+        "value": "https://github.com/Metta-AI/cogame-procgen/blob/main/docs/PROTOCOL.md"
+      }
+    },
+    "docs": {
+      "readme": {
+        "type": "text",
+        "value": "# Procgen\n\nOne cog, eight small levels in a row, and a generator that has never built any of them\nbefore. Each level is a 15 × 9 tile board drawn from a number nobody tells the cog: a maze\nwith four gems behind a locked door; an open room of pellets patrolled by hunters; a stack\nof tiers over a lethal pit; a wall of dirt hiding diamonds under falling boulders. Ten\ndecisions per level, six moves per decision, executed blind — but cut short the instant a\nhunter comes alongside, a boulder starts falling overhead, or the cog goes into free fall.\n\nHalf the levels come from a **seed table published in this repo**, so a good prompt may have\nstudied them. The other half were drawn out of two billion possibilities the moment the\nepisode started, and the cog is never told which is which. **The score is the average return\non the levels nobody has ever seen.** The replay shows both numbers side by side, and the\ngap between them is the whole point of the coworld.\n\n**This is a reimplementation in the spirit of OpenAI Procgen, not a port of it** — see\n[`docs/RULES.md`](docs/RULES.md), which opens with that sentence and lists every divergence.\n\n**A policy is just a prompt.** Both champions are `PLAYER_PROMPT` policies; the two fillers\nare scripted baselines; all four run the same image, switched by environment.\n\n## The four archetypes\n\n`maze` (search a topology), `chaser` (evade a pursuer), `climber` (commit to a jump you\ncannot take back) and `miner` (reshape the terrain you are standing in) — one 15 × 9 tile\nsim, one six-symbol action alphabet (`L R U D X .`), one scoring formula, one renderer, and\nexactly one physics hook each. See [`docs/ARCHETYPES.md`](docs/ARCHETYPES.md).\n\n## Scoring\n\nPer level: 700 × (collectibles taken / total), plus up to 200 for how much closer to the\nexit the cog ever got than where it started, plus 100 for reaching the exit. 1000 is a\nperfect level. `scores[0]` is the mean over the **unseen** levels only, in `[0.000, 1.000]`,\nhigher better. The seen mean and the gap are measured, drawn and recorded — never scored,\nbecause the moment the seen half pays, memorising 128 published levels becomes worth doing.\n\n## Repo layout\n\n| Path | What |\n|---|---|\n| `src/procgen/` | the sim: `tiles.nim`, `gen.nim` (the four generators), `levels.nim` (the frame resolver), `path.nim` (one bounded search), `seeds.nim`, `scoring.nim`, `upstream.nim`, plus the server, the commander layer and the replay |\n| `src/procgen.nim` | the game server, `/bin/procgen` |\n| `src/procgen_player.nim` | the thin seat registrar, `/bin/procgen-player` |\n| `client/` | the broadcast chrome: `chrome_common.js` (byte-identical to the starter's), `broadcast_core.js` (the tile renderer) and `replay_broadcast.html` (the starter's page plus the appended PROCGEN block) |\n| `replay-viewer/` | the wasm entry, the emscripten link flags and the static shell |\n| `data/` | the board art: nano-banana renders of the Softmax cog, one kit per role |\n| `scripts/art/` | the source sheets and the split script that made `data/` |\n| `tools/ci/` | the CI harness: the docker smoke, the viewer smoke, the renderer fixture, the policy set |\n| `docs/` | the rules, the archetypes, the published training seeds, the wire protocol, and the accepted design note |\n\n## Playing a seat\n\n```bash\ncoworld upload-policy coworld-procgen:latest \\\n  --name my-procgen --run /bin/procgen-player \\\n  --secret-env PLAYER_PROMPT=\"read the map rows, take the nearest gem first, \\\nand never plan a move that ends next to a hunter\"\n```\n\n`PLAYER_SCRIPTED=pathfinder` or `PLAYER_SCRIPTED=scavenger` seats one of the two shipped\nbaselines instead. A seat that sets neither is `pathfinder`.\n\n## Building\n\nThe game is Nim. `ci.yml` is the harness: it runs every `tests/*.nim` in debug and release,\nsweeps the scripted-baseline tuning over a fixed ladder, builds the production image and\nplays one real episode through raw docker (`tools/ci/docker_smoke.sh`), then builds the\nstatic replay-viewer bundle and **opens it in headless chromium** against the replay that\nepisode produced.\n\n```bash\nnim c -r tests/tests.nim                    # the whole suite\ndocker build -t coworld-procgen:ci .        # the production image\n./tools/ci/docker_smoke.sh coworld-procgen:ci\n./tools/build_replay_viewer.sh \"$PWD/dist/static-replay-viewer\"\n```\n\n## Watching\n\nReplays are a **static file plus a browser wasm viewer, never a pod**: the manifest declares\n`\"replay_viewer\": {\"bundle\": \"static-replay-viewer\"}`, `tools/build_replay_viewer.sh`\ncompiles the *same* sim module to wasm, and the viewer **re-generates every level from its\nseed** and re-simulates from the recorded action bytes in the browser. Everything the viewer\nneeds — the names, the config, the level seeds, one byte per frame — lives in the replay\nbytes; no server is contacted except S3 for the file.\n\n`python3 tools/replay_summary.py <file>` prints one strict-UTF-8 JSON object describing any\nreplay, using only the Python 3 standard library.\n"
+      },
+      "pages": [
+        {
+          "id": "rules.md",
+          "title": "Rules",
+          "content": {
+            "type": "text",
+            "value": "# Procgen — rules\n\n**This is a reimplementation in the spirit of Procgen, not a port of it.** OpenAI Procgen is\na C++ engine (`gym3` / `libenv`, 64×64 RGB framebuffers) that cannot be embedded in a Nim\ncoworld image and cannot be compiled to this repo's wasm replay viewer. What this repo\nbuilds is an original suite of procedurally generated minigame archetypes, written in Nim,\ngraded on levels nobody has ever seen. Every claim it makes about upstream Procgen lives in\n`src/procgen/upstream.nim` with its citation beside it, and every divergence is listed in\n§Divergences below.\n\nOne cog is dropped into eight small levels in a row. Each level is built from scratch by a\ngenerator from a number nobody tells it. It gets ten decisions per level, and each decision\nis up to six moves it commits to in advance. Half the levels come from a seed table\npublished in this repo, so a good prompt may have studied them; the other half were drawn\nout of two billion possibilities the moment the episode started. **The score is what it does\non the ones nobody has seen.**\n\n## The board\n\nEvery level, in every archetype, is a **15 × 9 tile grid**, `cellPx = 32`, with the outer\nring always `Wall`. Coordinates are `[x, y]`, **x growing right, y growing down**; `[0,0]`\nis the top-left. `L` = x−1, `R` = x+1, `U` = y−1, `D` = y+1.\n\n| Value | Name | ASCII | Passable? |\n|---|---|---|---|\n| 0 | `Empty` | `.` | yes |\n| 1 | `Wall` | `#` | never (bedrock; `miner` cannot dig it) |\n| 2 | `Dirt` | `:` | only in `miner`, by digging |\n| 3 | `Boulder` | `O` | only in `miner`, by pushing |\n| 4 | `Gem` | `*` | yes (collects) |\n| 5 | `Pellet` | `o` | yes (collects) |\n| 6 | `ExitLocked` | `+` | no |\n| 7 | `ExitOpen` | `E` | yes (finishes the level) |\n| 8 | `Platform` | `=` | no (stood on, in `climber`) |\n| 9 | `Ladder` | `H` | yes (climbable with `U`/`D`) |\n| 10 | `Spike` | `^` | yes, and lethal |\n\nThe cog is `@` in the observation's ASCII grid; a hunter is `X`.\n\n## The action alphabet\n\n**Exactly six symbols: `L R U D X .`** — left, right, up, down, the archetype's special, and\nwait. Case-insensitive on the wire, uppercased on parse. `X` is the only symbol whose\nmeaning changes:\n\n| Archetype | `X` means |\n|---|---|\n| `maze` | nothing — treated as `.` |\n| `chaser` | **dash**: move two tiles in `last_dir` if both are passable, then a 4-frame cooldown |\n| `climber` | **jump**: set `jumpFuel = 2`; while it lasts the cog rises one tile per frame instead of falling |\n| `miner` | **dig**: convert the `Dirt` tile in `last_dir` to `Empty` without moving |\n\n## Why a turn is a plan\n\nProcgen runs at 15 frames per second and the agent acts on every frame. An LLM cannot. One\ndecision turn is **one `moves` string of up to six symbols**, executed one symbol per sim\nframe, in order. 8 levels × 10 turns = **80 LLM calls** and up to **480 sim frames** per\nepisode.\n\nCommitting blind for six frames would be suicide in `chaser` and `miner`, so the plan is\n**interruptible**. The danger interrupt fires at the end of a frame when:\n\n* `chaser`: any hunter is within Chebyshev distance 1 of the cog;\n* `miner`: a boulder marked `falling` is in the cog's column, at most 3 tiles above it, with\n  only `Empty` between;\n* `climber`: the cog is in free fall with `fallDepth >= 2`;\n* any archetype: the cog stands adjacent to a `Spike` it was not adjacent to at plan time.\n\nThe rest of the plan is discarded, `planInterrupts` counts it, and the seat is asked again\nimmediately. `maze` never interrupts, so a `maze` plan always runs all six frames.\n\n## The four archetypes\n\n| | `maze` | `chaser` | `climber` | `miner` |\n|---|---|---|---|---|\n| Shape | perfect maze on the 7 × 4 odd lattice, `braidCount` dead ends knocked out | open room with 1 × 1 pillars | three walkable tiers over a pit, ladders and jumpable gaps | interior filled with `Dirt`, bedrock veins, boulders |\n| Collectibles | 4 `Gem` on the lattice cells farthest from the start | 8 `Pellet` | 4 `Gem` across the tiers | 4 `Gem` behind dirt |\n| Hazards | none | 2 hunters (3 on `hard`) | `Spike` tiles, lethal falls, the pit | falling boulders |\n| Gravity | no | no | **yes**, on the cog | **yes**, on boulders and gems |\n| `X` | wait | dash | jump | dig |\n| Death causes | — | `caught` | `fell`, `spiked` | `crushed` |\n\n**The exit is locked until every collectible on the level is taken.** Then it opens.\nReaching an open exit clears the level.\n\nEvery generator is seed-deterministic and validated: `generateLevel(kind, seed, difficulty)`\nis a pure function, ends with the archetype's validator (all collectibles and the exit\nreachable, the start never adjacent to a hunter spawn, `climber`'s every tier reachable from\nthe tier below within jump range), and redraws up to 40 times before falling back to a\ncommitted hand-authored level.\n\n## Seen and unseen\n\n* **The published half.** `src/procgen/seeds.nim` holds 32 seeds per archetype, 128 in\n  total, printed in [`TRAINING_SEEDS.md`](TRAINING_SEEDS.md). Anyone may study them.\n* **The held-out half.** `testRng`, seeded `seed xor 0x7E57`, draws each unseen level's seed\n  uniformly from `[100000, 2147483646]` — disjoint from the training seeds by construction.\n  `seed` is randomised per episode, so an unseen level did not exist when the prompt was\n  written.\n* **The plan is drawn before the seat connects**, so nothing a policy does can shift a seed\n  or a split.\n* The seat is **never told** which levels are seen and which are unseen, nor any level's\n  seed. The spectator is told both.\n\n## Scoring\n\nPer level `i`, an integer return in milli-points, `0 … 1000`:\n\n```\ncollectMilli[i]  = (700 * collected[i]) div collectTotal[i]                      # 0 .. 700\napproachMilli[i] = (200 * max(0, startDist[i] - bestDist[i])) div startDist[i]   # 0 .. 200\nfinishMilli[i]   = 100 if finished[i] else 0                                     # 0 or 100\nreturnMilli[i]   = collectMilli[i] + approachMilli[i] + finishMilli[i]           # 0 .. 1000\n```\n\nThen, over the gauntlet:\n\n```\nunseenMilli = mean(returnMilli[i] for i where split[i] == \"unseen\")\nseenMilli   = mean(returnMilli[i] for i where split[i] == \"seen\")\ngapMilli    = seenMilli - unseenMilli          # reported, NEVER scored\nscores[0]   = unseenMilli / 1000.0             # 0.000 .. 1.000, higher better\nwin[0]      = every unseen level ended `cleared`\n```\n\n`unseenMilli` is the arithmetic mean over **all** unseen levels, including the ones the cog\ndied on and the ones a deadline left `unplayed`. There is no drop-worst, no best-of and no\nretry. `seenMilli` is deliberately **not** scored: the moment the seen half pays, memorising\n128 published levels becomes worth doing, which is the exact failure this coworld exists to\navoid.\n\n## End conditions\n\n`results.reason` is a closed enum — `complete | deadline | fault` — and `results.endRule` is\n`gauntlet_complete | wall_clock | sim_fault | host_error`. A cog that dies on level 1 still\nplays levels 2 through 8: the score is an N-level mean and a missing level is a hole, not a\nzero. A budget guard switches the seat to the `pathfinder` baseline from\n`elapsed + 2 × turnBudget > wallClockBudgetSeconds`, so even the worst case settles\n`complete`.\n\n## Integrity\n\n* The unseen seeds are drawn per episode from 2.1 × 10⁹ per archetype, through a stream the\n  policy cannot observe or influence. There is no fixed hidden set that can leak.\n  (The reading NOT taken: \"test seeds held by the server\" could also mean a fixed hidden\n  list. A fixed list would need a secret store, a leak policy and a rotation schedule, and\n  it would be strictly weaker — a leak would be unrecoverable, whereas a fresh draw cannot\n  leak.)\n* The score is an N-level average, never a best-of.\n* The replay records one action byte and one `gameHash` per sim frame; the wasm viewer\n  **re-generates every level from its seed** and re-simulates, and `#mmwarn` fires on the\n  first divergent frame. Levels are never stored as tiles.\n\n## Divergences\n\nFrom upstream Procgen (each also in `src/procgen/upstream.nim`, asserted by\n`tests/test_procgen_upstream.nim`):\n\n1. **Not a port.** No Procgen C++ code, no `gym3`, no `libenv`, no upstream asset. The\n   archetypes are named after Procgen games because they are in the same spirit; the rules\n   are written here.\n2. **Symbolic observation, not pixels.** The fleet's policies are an LLM prompt policy and a\n   scripted baseline, not a convnet.\n3. **Six action symbols, not fifteen.** Diagonals are a corner-cutting rules problem that\n   adds a rule and no decision, and the two spare specials are unused by every archetype\n   here.\n4. **A decision is a plan of up to six primitive frames**, not one frame.\n5. **A fresh per-episode test seed, not a fixed held-out set.**\n\nFrom this repo's own design note:\n\n6. **`climber` has three walkable tiers, not four.** The note describes \"four platform rows\n   (y ∈ {7,5,3,1}) over a pit\". Four tiers in nine rows leaves no HEADROOM, and without a\n   tile of headroom the two-tile jump can never lift the cog off its own floor — the\n   archetype's whole special would be a no-op. The shipped geometry is three walkable tiers\n   at y ∈ {7, 4, 1}, each carried by a band beneath it (the bottom wall row, y=5 and y=2)\n   and each with a tile of empty headroom above it, so `X` is a real move: jump, then carry\n   the horizontal moves across the gap. The four gems are spread over the three tiers.\n"
+          }
+        },
+        {
+          "id": "archetypes.md",
+          "title": "The four archetypes",
+          "content": {
+            "type": "text",
+            "value": "# The four archetypes\n\nOne 15 × 9 integer tile sim, one action alphabet, one scoring formula, one renderer. Each\narchetype contributes exactly **one generator and one physics hook** — that is the whole\nbudget, and it is why there are four and not sixteen.\n\nThey are the four *decision* shapes the Procgen suite is built out of: search a topology,\nevade a pursuer, commit to a jump you cannot take back, and reshape the terrain you are\nstanding in.\n\n## `maze` — search a topology\n\nA perfect maze carved by an iterative backtracker on the interior's **7 × 4 odd lattice**\n(lattice cell `(i, j)` is tile `(1 + 2i, 1 + 2j)`), with `braidCount` dead ends knocked out\nto make loops. Four gems sit on the lattice cells farthest from the start and the locked\nexit on the farthest of all, so every level is a real traverse.\n\n* Physics hook: **none**. No gravity, no hazards, nothing that moves but the cog.\n* `X` is a wait. A `maze` plan therefore always runs all six frames — the danger interrupt\n  can never fire.\n* `braidCount`: easy 8, standard 4, hard 1. Fewer braids means fewer shortcuts and longer\n  routes.\n\n## `chaser` — evade a pursuer\n\nAn open room with `pillarCount` scattered 1 × 1 pillars, eight pellets, a locked exit and\n`hunterCount` hunters.\n\n* Physics hook: each hunter takes **one step along a shortest path to the cog**, ties broken\n  in the fixed order `L, R, U, D` — **except** on frames where `frame mod 3 == 0`, where\n  hunters do not move. The cog is therefore strictly faster: three cog steps per two hunter\n  steps.\n* `X` is a **dash**: two tiles in `last_dir` when both are passable, then a four-frame\n  cooldown during which `X` is a wait.\n* A hunter sharing the cog's cell kills it, cause `caught`.\n* `pillarCount` / `hunterCount`: easy 6/1, standard 10/2, hard 14/3.\n\n## `climber` — commit to a jump\n\nThree walkable tiers at `y ∈ {7, 4, 1}`, each carried by a band of `Platform` beneath it\n(the bottom wall row, `y = 5` and `y = 2`) and each with a tile of empty headroom above it.\nLadders join the tiers; the lower band carries one or two gaps of at most two tiles, which\nare both the pit and the reason the jump exists.\n\n* Physics hook: **gravity on the cog**. With `jumpFuel > 0` the cog rises one tile per frame\n  if the cell above is not solid; otherwise, unsupported, it falls one tile per frame and\n  `fallDepth` grows. Landing resets `fallDepth`; `fallDepth > fallLethal` (4) kills, cause\n  `fell`.\n* `X` is a **jump**: `jumpFuel = 2`. Horizontal moves are legal in mid-air, which is what\n  carries the cog across a gap — face the way you are going, `X`, then the horizontal moves.\n* `U` / `D` move only on a `Ladder` (the cog is on one, or the target is one).\n* A `Spike` kills, cause `spiked`. `spikeCount`: easy 1, standard 3, hard 5.\n\n## `miner` — reshape the terrain\n\nThe interior filled with `Dirt`, `bedrockPct` of it replaced by bedrock veins, four gems\nburied in it, `boulderCount` boulders resting on something, and the locked exit in the far\ncorner.\n\n* Physics hook: the **falling scan**, in the fixed order bottom row to top row, left to\n  right — any `Boulder` or `Gem` with `Empty` directly below it moves down one tile and is\n  marked `falling`; a marked entity that can no longer fall is unmarked. One tile per entity\n  per frame.\n* `X` **digs** the `Dirt` tile in `last_dir` without moving. A `Dirt` target is dug and\n  entered in the same frame by a plain direction; a `Boulder` target is **pushed** one tile\n  when the move is horizontal and the cell beyond is `Empty`, otherwise the move is blocked.\n* A **falling** boulder entering the cog's cell kills it, cause `crushed`. A boulder resting\n  on the cog does not.\n* `boulderCount` / `bedrockPct`: easy 3/6 %, standard 6/10 %, hard 9/14 %.\n\n## What is deferred, and why\n\nTwelve of Procgen's sixteen games are out of scope for v1, and each needs an engine this\nrepo does not have: `starpilot` and `plunder` are scrolling shooters with projectiles and\ncontinuous motion; `bigfish` is a size-ordered ecology; `bossfight` is a boss state machine\nwith phases; `caveflyer` and `fruitbot` need continuous flight; `heist` needs a key/lock\ngraph on top of the maze. Four archetypes on one tile sim is what v1 can build and prove;\nadding a fifth engine is a second design note, not a switch.\n"
+          }
+        },
+        {
+          "id": "training-seeds.md",
+          "title": "Published training seeds",
+          "content": {
+            "type": "text",
+            "value": "# Published training seeds\n\nThese 128 seeds are **public on purpose**. Every one of them names a level you can\ngenerate, study, solve and hard-code, and a champion prompt that memorises all 128 is\nplaying the game as intended — it just earns nothing, because **the seen half is never\nscored**. `scores[0]` is the mean return over the UNSEEN levels only.\n\nHalf of every episode's gauntlet is drawn from this table (which seed, and the play order,\ncome from the episode seed through `setupRng`); the other half is drawn fresh from\n`[100000, 2147483646]` through `testRng`, a stream seeded `seed xor 0x7E57` that the seat\ncan neither observe nor influence. Every training seed here is below 5000, so the two sets\nare **disjoint by construction** — `tests/test_procgen_seeding.nim` asserts it.\n\nReproduce any level with `generateLevel(kind, seed, difficulty)`\n(`src/procgen/gen.nim`): it is a pure function of those three arguments, and\n`tests/test_procgen_gen.nim` asserts the grids are identical across 500 seeds and between\nthe native build and the wasm build.\n\n| archetype | seeds |\n|---|---|\n| `maze` | 1001–1032 |\n| `chaser` | 2001–2032 |\n| `climber` | 3001–3032 |\n| `miner` | 4001–4032 |\n\n## The full table\n\n### `maze`\n\n    1001  1002  1003  1004  1005  1006  1007  1008\n    1009  1010  1011  1012  1013  1014  1015  1016\n    1017  1018  1019  1020  1021  1022  1023  1024\n    1025  1026  1027  1028  1029  1030  1031  1032\n\n### `chaser`\n\n    2001  2002  2003  2004  2005  2006  2007  2008\n    2009  2010  2011  2012  2013  2014  2015  2016\n    2017  2018  2019  2020  2021  2022  2023  2024\n    2025  2026  2027  2028  2029  2030  2031  2032\n\n### `climber`\n\n    3001  3002  3003  3004  3005  3006  3007  3008\n    3009  3010  3011  3012  3013  3014  3015  3016\n    3017  3018  3019  3020  3021  3022  3023  3024\n    3025  3026  3027  3028  3029  3030  3031  3032\n\n### `miner`\n\n    4001  4002  4003  4004  4005  4006  4007  4008\n    4009  4010  4011  4012  4013  4014  4015  4016\n    4017  4018  4019  4020  4021  4022  4023  4024\n    4025  4026  4027  4028  4029  4030  4031  4032\n\n## Difficulty\n\nEach seed generates a different level at each of the three difficulties (`easy`,\n`standard`, `hard`); the league default is `standard` and the `hardpool` variant plays\n`hard`. The seed alone does not name a level — `(kind, seed, difficulty)` does.\n"
+          }
+        },
+        {
+          "id": "protocol.md",
+          "title": "Wire protocol",
+          "content": {
+            "type": "text",
+            "value": "# Wire protocol\n\n## The Coworld contract\n\n| Direction | Variable | Meaning |\n|---|---|---|\n| in | `COGAME_CONFIG_URI` | the episode's `game_config` |\n| out | `COGAME_RESULTS_URI` | the results document (closed schema) |\n| out | `COGAME_SAVE_REPLAY_URI` | the binary `COWLDPGN` replay |\n| out | `COGAME_PLAYER_FAILURE_URI` | one `{\"message\",\"failed_policy_index\"}` payload |\n| out | `COGAME_EVENTS_URI` | the tier-2 JSON-lines analysis stream |\n| local | `COGAME_LOAD_REPLAY_URI` | developer replay mode, never declared to the platform |\n| — | `COGAME_HOST` / `COGAME_PORT` | where to listen (`HOST` / `PORT` also accepted) |\n\nThe player socket lives at `/player?slot=0&token=<t>` and is **closed unless the token\nmatches the seat**. `/global` is the spectator stream; `/healthz`, `/client/player` and\n`/client/global` answer the certifier's browser probes and keep answering for a bounded\nshutdown grace after the artifacts are written.\n\n## Per-seat observation\n\nThe whole level is in every observation — this game is **fully observed** — in tiles,\nintegers only.\n\n```json\n{\n  \"level\": {\"index\": 3, \"of\": 8, \"kind\": \"miner\", \"w\": 15, \"h\": 9,\n            \"difficulty\": \"standard\"},\n  \"turn\": 4, \"turns_left_this_level\": 6, \"frame\": 18, \"frames_per_turn\": 6,\n  \"map\": [\n    \"###############\",\n    \"#@:::*::::::::#\",\n    \"#:::##::O:::::#\",\n    \"#::::::::::::*#\",\n    \"#:O:::###:::::#\",\n    \"#::::::*::::::#\",\n    \"#:::::::::::O:#\",\n    \"#*::::::::::+:#\",\n    \"###############\"\n  ],\n  \"legend\": {\"#\":\"bedrock\", \":\":\"dirt\", \"O\":\"boulder\", \"*\":\"gem\", \"o\":\"pellet\",\n             \"+\":\"locked exit\", \"E\":\"open exit\", \"=\":\"platform\", \"H\":\"ladder\",\n             \"^\":\"spikes\", \".\":\"empty\", \"@\":\"you\", \"X\":\"hunter\"},\n  \"you\": {\"at\": [1,1], \"last_dir\": \"R\", \"alive\": true,\n          \"jump_fuel\": 0, \"fall_depth\": 0, \"dash_cooldown\": 0},\n  \"collected\": 0, \"collect_total\": 4, \"exit_open\": false, \"exit_at\": [12,7],\n  \"exit_distance\": 19, \"nearest_gem\": [5,1], \"nearest_gem_distance\": 4,\n  \"hunters\": [], \"falling\": [],\n  \"actions\": [\n    {\"a\":\"L\",\"to\":[0,1],\"legal\":false,\"effect\":\"blocked\",\"kills\":false},\n    {\"a\":\"R\",\"to\":[2,1],\"legal\":true, \"effect\":\"dig\",\"kills\":false},\n    {\"a\":\"U\",\"to\":[1,0],\"legal\":false,\"effect\":\"blocked\",\"kills\":false},\n    {\"a\":\"D\",\"to\":[1,2],\"legal\":true, \"effect\":\"dig\",\"kills\":false},\n    {\"a\":\"X\",\"to\":[2,1],\"legal\":true, \"effect\":\"dig_in_place\",\"kills\":false},\n    {\"a\":\".\",\"to\":[1,1],\"legal\":true, \"effect\":\"wait\",\"kills\":false}\n  ],\n  \"levels_done\": [\n    {\"index\":1,\"kind\":\"maze\",\"outcome\":\"cleared\",\"return\":1000},\n    {\"index\":2,\"kind\":\"chaser\",\"outcome\":\"died\",\"return\":425}\n  ],\n  \"your_notes\": \"gem at 5,1 is clean; boulder at 8,2 sits over the direct line\"\n}\n```\n\n`actions[]` always has exactly six entries in the wire order `L, R, U, D, X, .`, and it is\nthe **precomputed legal choice set**: `legal`, `to`, `effect` and `kills` all come from the\nresolver's own `applyAction` / `passable` procs. One predicate, five callers — the\nobservation can never claim something the resolver disagrees with.\n\n**Hidden from the seat**, explicitly and by test\n(`tests/test_procgen_identity_privacy.nim`):\n\n* the level's seed, and every other level's seed;\n* whether this level (or any level) is `seen` or `unseen`, and the counts of each;\n* the kind, seed and split of levels not yet played;\n* the `setupRng` / `testRng` / `levelRng` states;\n* the seat's **real policy/player name** — only `COG-alpha` appears anywhere;\n* the running `seenMilli` / `unseenMilli` / `gapMilli`, and therefore `scores[0]`.\n\n## Reply schema\n\n```json\n{\"moves\":\"RRXDDL\",\"say\":\"digging under the rock\",\"notes\":\"gem 4 needs a side escape at 11,6\"}\n```\n\n| Field | Cap | Repair |\n|---|---|---|\n| `moves` | **6 runes** over `L R U D X .` | uppercased; anything outside the six is DROPPED; longer than six truncated on a RUNE boundary; empty or absent becomes `\".\"` |\n| `say` | **24 runes**, spectator-only | rune-boundary truncation, then the printable shout filter (which also strips `{` and `}`) |\n| `notes` | **160 runes**, private | newlines collapsed, then rune-boundary truncation |\n\nThe whole reply is read with a **4096-byte** cap and the JSON is extracted tolerantly\n(markdown fences and surrounding prose survive). **Every truncation lands on a rune\nboundary.** The validator **repairs, never rejects**: there is no reply that leaves the cog\nunactuated. Any repair increments `ordersRejected`.\n\n`PLAYER_PROMPT` is itself capped at 4000 runes and is never echoed into the replay or the\nresults.\n\n## The replay\n\nBinary `COWLDPGN`: a header, the config JSON (seed, variant, difficulty, `levelKinds`,\n`levelSeeds`, `levelSplit`, the cadence constants, the real player name, the alias), the\njoin record, **one action byte per sim frame** (`0=L 1=R 2=U 3=D 4=X 5=. 255=level\nboundary`) plus a per-frame `gameHash`, and the chat records (`register`, `directive`,\n`fallback`, `gen_fallback`, `budget_guard`, `stop`, `result`).\n\n**The level grids are not recorded** and do not need to be: `generateLevel(kind, seed,\ndifficulty)` is a pure function, so the wasm viewer re-generates all eight levels from\n`levelKinds` + `levelSeeds` + `difficulty`, and the per-frame `gameHash` proves it — which\nis exactly the deterministic replay verification the idea asks for.\n\n`python3 tools/replay_summary.py <file>` prints one strict-UTF-8 JSON object describing any\nreplay, using only the Python 3 standard library.\n\n## Events\n\n`COGAME_EVENTS_URI` gets one JSON object per line plus a trailing summary row. The\nbroadcast vocabulary is a closed enum of seventeen kinds: `gamestart`, `levelstart`, `plan`,\n`step`, `collect`, `dig`, `push`, `fall`, `hunter`, `interrupt`, `death`, `exitopen`,\n`levelend`, `say`, `fallback`, `gauntletend` and `end`. Seven of them make scrubber beats:\n`levelstart`, `collect`, `exitopen`, `death`, `levelend`, `fallback`, `gauntletend`.\n"
+          }
+        }
+      ]
+    },
+    "config_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tokens",
+        "players"
+      ],
+      "properties": {
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "Per-seat player tokens. Injected by the episode runner; never present in a shipped game_config."
+        },
+        "players": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "One entry, carrying the seat's real policy name."
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "levelCount": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 8,
+          "description": "4 or 8. The gauntlet plan is a paired seen/unseen comparison over the four archetypes, and only those two counts produce one."
+        },
+        "turnsPerLevel": {
+          "type": "integer",
+          "minimum": 4,
+          "maximum": 20
+        },
+        "framesPerTurn": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "difficulty": {
+          "type": "string",
+          "enum": [
+            "easy",
+            "standard",
+            "hard"
+          ],
+          "default": "standard"
+        },
+        "interruptOnDanger": {
+          "type": "boolean",
+          "default": true
+        },
+        "fallLethal": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "renderFramesPerStep": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12
+        },
+        "sayFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48
+        },
+        "attempt1Ms": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000
+        },
+        "retryMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 60000
+        },
+        "turnBudgetMs": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 120000
+        },
+        "turnSpacingMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 60000
+        },
+        "wallClockBudgetSeconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 660
+        },
+        "lobbyJoinTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 300
+        },
+        "gameOverFrames": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 48
+        },
+        "minPlayers": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1
+        },
+        "fastMode": {
+          "type": "boolean"
+        },
+        "showPlayerLabels": {
+          "type": "boolean"
+        },
+        "num_agents": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1,
+          "default": 1
+        }
+      }
+    },
+    "results_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "The seat's real policy name — spectator side only."
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "COG-alpha, the only name an agent ever sees."
+        },
+        "scores": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "unseenMilli / 1000, in [0.000, 1.000]; higher is better."
+        },
+        "win": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "True only when every unseen level ended cleared."
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "deadline",
+            "fault"
+          ]
+        },
+        "endRule": {
+          "type": "string",
+          "enum": [
+            "gauntlet_complete",
+            "wall_clock",
+            "sim_fault",
+            "host_error"
+          ]
+        },
+        "variant": {
+          "type": "string"
+        },
+        "difficulty": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "levelCount": {
+          "type": "integer"
+        },
+        "levelKinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4,
+          "maxItems": 8,
+          "description": "maze | chaser | climber | miner, in play order."
+        },
+        "levelSplit": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4,
+          "maxItems": 8,
+          "description": "seen | unseen. Never shown to the seat."
+        },
+        "levelSeeds": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 4,
+          "maxItems": 8,
+          "description": "The seed each level was generated from."
+        },
+        "levelReturns": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 4,
+          "maxItems": 8,
+          "description": "0..1000 per level."
+        },
+        "levelOutcome": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "cleared",
+              "died",
+              "timeup",
+              "unplayed"
+            ]
+          },
+          "minItems": 4,
+          "maxItems": 8
+        },
+        "levelDeathCause": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4,
+          "maxItems": 8,
+          "description": "caught | fell | spiked | crushed, or empty."
+        },
+        "levelFrames": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 4,
+          "maxItems": 8
+        },
+        "levelCollected": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 4,
+          "maxItems": 8
+        },
+        "levelCollectTotal": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 4,
+          "maxItems": 8
+        },
+        "seenMilli": {
+          "type": "integer"
+        },
+        "unseenMilli": {
+          "type": "integer"
+        },
+        "gapMilli": {
+          "type": "integer",
+          "description": "seenMilli - unseenMilli. Reported, never scored."
+        },
+        "seenCleared": {
+          "type": "integer"
+        },
+        "unseenCleared": {
+          "type": "integer"
+        },
+        "policyKinds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "maxItems": 1,
+          "description": "llm | scripted, as the game was given it."
+        },
+        "llmTurns": {
+          "type": "integer"
+        },
+        "fallbackTurns": {
+          "type": "integer"
+        },
+        "ordersRejected": {
+          "type": "integer"
+        },
+        "planInterrupts": {
+          "type": "integer"
+        },
+        "genFallbacks": {
+          "type": "integer"
+        },
+        "deadSeats": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          },
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "stopDetail": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "player": [
+    {
+      "id": "pathfinder",
+      "type": "player",
+      "name": "pathfinder",
+      "description": "The careful baseline: it projects its whole six-frame plan through the resolver and drops it at the first frame that would kill the cog. The certification player, the per-turn fallback and the default for an unregistered seat. EXACTLY ONE bundled player is declared: every declared player must occupy a certification slot, and a one-seat fixture has exactly one.",
+      "image": "{{PROCGEN_IMAGE}}",
+      "run": [
+        "/bin/procgen-player"
+      ],
+      "source_url": "https://github.com/Metta-AI/cogame-procgen",
+      "env": {
+        "PLAYER_SCRIPTED": "pathfinder",
+        "PLAYER_POLICY_LABEL": "pathfinder"
+      },
+      "resources": {
+        "requests": {
+          "cpu": "200m",
+          "memory": "128Mi"
+        },
+        "limits": {
+          "cpu": "1"
+        }
+      }
+    }
+  ],
+  "variants": [
+    {
+      "id": "gauntlet",
+      "name": "Procgen Gauntlet (8 levels, half of them nobody has ever seen)",
+      "description": "One cog plays eight procedurally generated 15x9 levels back to back: a maze with four gems behind a locked door, an open room of pellets patrolled by hunters, a stack of tiers over a lethal pit, and a wall of dirt hiding diamonds under falling boulders - each archetype twice. Four of the eight are built from seeds published in this repo; the other four are drawn out of two billion possibilities the moment the episode starts, and the cog is never told which is which. Ten decisions per level, six moves per decision, executed blind but cut short the instant something dangerous happens. The score is the average return on the four levels nobody has ever seen.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Cog1"
+          }
+        ],
+        "num_agents": 1,
+        "minPlayers": 1,
+        "levelCount": 8,
+        "turnsPerLevel": 10,
+        "framesPerTurn": 6,
+        "difficulty": "standard",
+        "interruptOnDanger": true,
+        "fallLethal": 4,
+        "renderFramesPerStep": 4,
+        "sayFrames": 12,
+        "attempt1Ms": 5000,
+        "retryMs": 2000,
+        "turnBudgetMs": 7500,
+        "turnSpacingMs": 2500,
+        "wallClockBudgetSeconds": 660,
+        "lobbyJoinTimeoutSeconds": 90,
+        "gameOverFrames": 12,
+        "fastMode": true,
+        "showPlayerLabels": false
+      }
+    },
+    {
+      "id": "sprint",
+      "name": "Procgen Sprint (4 levels, deeper play on each)",
+      "description": "The same four archetypes, but one level each and fourteen decisions instead of ten - room to backtrack out of a bad maze branch or wait out a hunter. Two of the four levels come from the published seed table and two are drawn fresh at episode start, chosen by the episode seed, and the cog is never told which. The score is still the average return on the unseen half, so a single bad unseen level costs twice what it costs in the eight-level gauntlet. This is the high-variance ladder.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Cog1"
+          }
+        ],
+        "num_agents": 1,
+        "minPlayers": 1,
+        "levelCount": 4,
+        "turnsPerLevel": 14,
+        "framesPerTurn": 6,
+        "difficulty": "standard",
+        "interruptOnDanger": true,
+        "fallLethal": 4,
+        "renderFramesPerStep": 4,
+        "sayFrames": 12,
+        "attempt1Ms": 5000,
+        "retryMs": 2000,
+        "turnBudgetMs": 7500,
+        "turnSpacingMs": 2500,
+        "wallClockBudgetSeconds": 660,
+        "lobbyJoinTimeoutSeconds": 90,
+        "gameOverFrames": 12,
+        "fastMode": true,
+        "showPlayerLabels": false
+      }
+    },
+    {
+      "id": "hardpool",
+      "name": "Procgen Hard (8 levels, denser hazards)",
+      "description": "The eight-level gauntlet with the generator's difficulty turned up: mazes with fewer shortcuts and longer routes, three hunters instead of two, more spikes over the pit, and more boulders sitting on top of the diamonds. Same ten decisions and six moves per decision, same published-versus-unseen split, same scoring. It is the same four questions asked with less margin, and it is where a careful policy separates from a greedy one.",
+      "game_config": {
+        "players": [
+          {
+            "name": "Cog1"
+          }
+        ],
+        "num_agents": 1,
+        "minPlayers": 1,
+        "levelCount": 8,
+        "turnsPerLevel": 10,
+        "framesPerTurn": 6,
+        "difficulty": "hard",
+        "interruptOnDanger": true,
+        "fallLethal": 4,
+        "renderFramesPerStep": 4,
+        "sayFrames": 12,
+        "attempt1Ms": 5000,
+        "retryMs": 2000,
+        "turnBudgetMs": 7500,
+        "turnSpacingMs": 2500,
+        "wallClockBudgetSeconds": 660,
+        "lobbyJoinTimeoutSeconds": 90,
+        "gameOverFrames": 12,
+        "fastMode": true,
+        "showPlayerLabels": false
+      }
+    }
+  ],
+  "certification": {
+    "players": [
+      {
+        "player_id": "pathfinder"
+      }
+    ],
+    "game_config": {
+      "players": [
+        {
+          "name": "Cog1"
+        }
+      ],
+      "num_agents": 1,
+      "minPlayers": 1,
+      "levelCount": 4,
+      "turnsPerLevel": 10,
+      "framesPerTurn": 6,
+      "difficulty": "standard",
+      "interruptOnDanger": true,
+      "fallLethal": 4,
+      "renderFramesPerStep": 4,
+      "sayFrames": 12,
+      "attempt1Ms": 5000,
+      "retryMs": 2000,
+      "turnBudgetMs": 7500,
+      "turnSpacingMs": 0,
+      "wallClockBudgetSeconds": 200,
+      "lobbyJoinTimeoutSeconds": 45,
+      "gameOverFrames": 12,
+      "fastMode": true,
+      "showPlayerLabels": false,
+      "seed": 42
+    }
+  }
+}
