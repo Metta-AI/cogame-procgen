@@ -213,12 +213,22 @@ block:
     let
       id = variant{"id"}.getStr()
       config = variant{"game_config"}
-      turns = config{"levelCount"}.getInt() * config{"turnsPerLevel"}.getInt()
-      worstMs = turns * config{"turnBudgetMs"}.getInt()
-    check worstMs div 1000 + 50 <= 720,
-      id & ": levelCount x turnsPerLevel x turnBudgetMs / 1000 + 50 <= 720 " &
-      "(the 60% of episodeTimeoutSeconds this game plays inside); got " &
-      $(worstMs div 1000 + 50)
+      turnBudgetMs = config{"turnBudgetMs"}.getInt()
+      turnBudgetSeconds = (turnBudgetMs + 999) div 1000
+      ## What bounds the episode is the BUDGET GUARD, not turns x turnBudget:
+      ## the last turn that may call the LLM starts by
+      ## `wallClockBudgetSeconds - 2 x turnBudgetSeconds` and takes at most one
+      ## spacing plus one turn budget; every later turn is integer work. So a
+      ## slow provider costs TURNS, never wall clock.
+      lastLlmTurnStart = config{"wallClockBudgetSeconds"}.getInt() -
+        2 * turnBudgetSeconds
+      slowestTurnSeconds =
+        (config{"turnSpacingMs"}.getInt() + turnBudgetMs + 999) div 1000
+      settledBy = lastLlmTurnStart + slowestTurnSeconds + 50
+    check settledBy <= 720,
+      id & ": the budget guard settles the episode by " & $settledBy &
+      " s, inside the 720 s (the 60% of episodeTimeoutSeconds this game " &
+      "plays inside)"
     check config{"attempt1Ms"}.getInt() mod 1000 == 0 and
       config{"retryMs"}.getInt() mod 1000 == 0,
       id & ": the deadlines are whole seconds (CURLOPT_TIMEOUT granularity)"

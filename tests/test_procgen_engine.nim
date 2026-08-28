@@ -259,9 +259,9 @@ block:
 # 30. the budget guard settles early -----------------------------------------
 block:
   var config = defaultGameConfig()
-  config.wallClockBudgetSeconds = 30
+  config.wallClockBudgetSeconds = 60
   config.turnSpacingMs = 0
-  check config.turnBudgetSeconds() == 8,
+  check config.turnBudgetSeconds() == 16,
     "30: the per-turn budget rounds up to whole seconds"
   var episode = newEpisode(config)
   discard episode.beginLevel()
@@ -274,9 +274,9 @@ block:
   for record in quiet:
     if "\"k\":\"budget_guard\"" in record: firedEarly = true
   check not firedEarly, "30: and writes no budget_guard record"
-  let records = decider.turn(episode, 20)
+  let records = decider.turn(episode, 40)
   check decider.llmOff,
-    "30: at elapsed 20 with an 8 s turn budget and a 30 s wall clock it fires"
+    "30: at elapsed 40 with a 16 s turn budget and a 60 s wall clock it fires"
   var guard = newJNull()
   for record in records:
     let node = parseJson(record)
@@ -285,7 +285,7 @@ block:
   check guard.kind == JObject, "30: and writes a budget_guard record"
   if guard.kind == JObject:
     check guard{"remaining_s"}.getInt() ==
-      config.wallClockBudgetSeconds - 20,
+      config.wallClockBudgetSeconds - 40,
       "30: naming how much wall clock was left"
   check decider.haveOrder, "30: the seat still has a plan after the guard"
 

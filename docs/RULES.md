@@ -176,3 +176,14 @@ From this repo's own design note:
    at y ∈ {7, 4, 1}, each carried by a band beneath it (the bottom wall row, y=5 and y=2)
    and each with a tile of empty headroom above it, so `X` is a real move: jump, then carry
    the horizontal moves across the gap. The four gems are spread over the three tiers.
+7. **The LLM deadlines are wider than the note's**, because the hosted provider is slower than
+   the note assumed. The note pins `attempt1Ms 5000 / retryMs 2000 / turnBudgetMs 7500` on the
+   claim that "5 s covers the hosted single-call p90 with margin"; measured on the hosted
+   ladder on 2026-08-28 every Bedrock call answered `ok / 200` but at **p50 ≈ 1.9-2.0 s and
+   p90 5.6-7.5 s (max 9.2 s)**, so first attempts were cut at 5 s, the retry got only 2 s —
+   less than the attempt that had just timed out — and the seat fell back to `pathfinder` on
+   up to 7 turns an episode. The shipped values are `attempt1Ms 10000 / retryMs 5000 /
+   turnBudgetMs 16000`; `turnSpacingMs` and `wallClockBudgetSeconds` are unchanged. The 720 s
+   bound is unchanged too, and is enforced by the budget guard above rather than by
+   `turns × turnBudget`: the episode settles early with FEWER turns, so a slow provider costs
+   turns, never wall clock.

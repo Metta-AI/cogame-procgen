@@ -70,11 +70,11 @@ const
     ## to fit inside it, worst case: the budget guard turns the seat scripted
     ## at `elapsed + 2 x turnBudgetSeconds > wallClockBudgetSeconds`, so the
     ## last turn that may call the LLM ENDS by
-    ## `wallClockBudgetSeconds - turnBudgetSeconds` = 660 - 8 = 652 s; every
+    ## `wallClockBudgetSeconds - turnBudgetSeconds` = 660 - 16 = 644 s; every
     ## later turn is microseconds of integer work. Then the `gameOverFrames`
     ## display hold (0.24 s) and the artifact writes, each bounded by
     ## `runtime.FetchTimeoutSeconds` — the SCORED artifact is the first of
-    ## them, so results land by 672 s. This constant is what stops the rest of
+    ## them, so results land by 665 s. This constant is what stops the rest of
     ## the tail (three more artifact URIs that could each hang for their full
     ## timeout, then this grace) from running past the budget: the grace ends
     ## at the earlier of `now + ShutdownGraceSeconds` and this deadline.

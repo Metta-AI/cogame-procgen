@@ -88,9 +88,9 @@ block:
 # the wall-clock arithmetic --------------------------------------------------
 block:
   let config = defaultGameConfig()
-  check config.attempt1Ms == 5000 and config.retryMs == 2000,
-    "llm: attempt 1 is 5 s and the single retry is 2 s"
-  check config.turnBudgetMs == 7500,
+  check config.attempt1Ms == 10000 and config.retryMs == 5000,
+    "llm: attempt 1 is 10 s and the single retry is 5 s"
+  check config.turnBudgetMs == 16000,
     "llm: the per-turn cap holds both calls plus slack"
   check config.turnSpacingMs == 2500,
     "llm: one seat at 60000/2500 = 24 requests a minute, inside the " &
@@ -98,15 +98,25 @@ block:
   check config.wallClockBudgetSeconds == 660,
     "llm: the engine's own stop is 660 s"
   ## THE ARITHMETIC, OUT LOUD. episodeTimeoutSeconds is 1200 and this game
-  ## plays inside 60 % of it (720 s).
+  ## plays inside 60 % of it (720 s). What bounds the episode is NOT
+  ## `turns x turnBudget` — at 16 s a turn, 80 turns of worst case would be
+  ## 1280 s — it is the BUDGET GUARD: the last turn that may call the LLM
+  ## STARTS at `wallClockBudgetSeconds - 2 x turnBudgetSeconds` at the latest,
+  ## and takes at most one spacing plus one turn budget, after which every
+  ## remaining turn is microseconds of integer work. The episode settles with
+  ## FEWER turns, never later.
   let
     turns = config.levelCount * config.turnsPerLevel
-    worstSeconds = turns * config.turnBudgetMs div 1000
+    lastLlmTurnStart =
+      config.wallClockBudgetSeconds - 2 * config.turnBudgetSeconds()
+    slowestTurnSeconds =
+      (config.turnSpacingMs + config.turnBudgetMs + 999) div 1000
     lobbyAndTail = 50
+    settledBy = lastLlmTurnStart + slowestTurnSeconds + lobbyAndTail
   check turns == 80, "llm: at most 80 decision turns"
-  check worstSeconds + lobbyAndTail <= 720,
-    "llm: the worst case (" & $(worstSeconds + lobbyAndTail) &
-      " s) is inside the 720 s budget"
+  check settledBy <= 720,
+    "llm: the budget guard settles the episode by " & $settledBy &
+      " s, inside the 720 s budget"
   ## And the budget guard fires two turn budgets before the engine's own stop,
   ## so even the worst case settles `complete` rather than `deadline`.
   check config.wallClockBudgetSeconds - 2 * config.turnBudgetSeconds() < 660,
