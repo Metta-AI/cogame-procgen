@@ -4,7 +4,7 @@
 
 import std/[json, os, sets, strutils]
 import procgen/[baselines, decide, directives, engine, events, levels,
-                records, replays, sim, sim_types]
+                records, replays, runtime, server, sim, sim_types]
 
 var failures = 0
 proc check(ok: bool, what: string) =
@@ -294,6 +294,7 @@ block:
   ## The probes are HTTP surface, so they are asserted where they are
   ## declared: registered BEFORE the catch-all asset route, token-checked, and
   ## never opening the player socket.
+  let m = manifest()
   let source = readFile("src/procgen/server.nim")
   let healthAt = source.find("result.get(\"/healthz\"")
   let playerAt = source.find("result.get(\"/client/player\"")
@@ -311,8 +312,39 @@ block:
   check "socket.send(message.data, Pong)" in source,
     "31: the websocket handler answers a Ping with a Pong"
   check "ShutdownGraceSeconds" in source and
-    "let graceUntil = getMonoTime()" in source,
+    "var graceUntil = getMonoTime()" in source,
     "31: and /healthz + /global keep answering for the shutdown grace"
+
+  ## ...for a grace that cannot push the pod past its budget. The whole
+  ## worst-case tail, in seconds, against the 60 % budget the checklist and
+  ## the note both name (720 of 1200):
+  ##   the budget guard turns the seat scripted at
+  ##   `elapsed + 2 x turnBudget > wallClock`, so the last LLM turn ENDS by
+  ##   `wallClock - turnBudget`; then the gameOverFrames display hold; then
+  ##   the artifact writes, each bounded by FetchTimeoutSeconds, of which the
+  ##   SCORED one is written first.
+  check PodBudgetSeconds == 720,
+    "31: the pod budget is 60 % of episode_timeout_minutes: 20"
+  check m{"episode_timeout_minutes"}.getInt() * 60 * 3 div 5 ==
+    PodBudgetSeconds,
+    "31: and it is derived from the manifest's own timeout"
+  for variant in m{"variants"}:
+    let id = variant{"id"}.getStr()
+    var config = defaultGameConfig()
+    config.update($variant{"game_config"})
+    let
+      lastLlmTurnEnd = config.wallClockBudgetSeconds -
+        config.turnBudgetSeconds()
+      holdSeconds = (config.gameOverFrames * 20 + 999) div 1000
+      scoredBy = lastLlmTurnEnd + holdSeconds + FetchTimeoutSeconds
+    check scoredBy <= PodBudgetSeconds,
+      id & ": the SCORED artifact is written by " & $scoredBy &
+        " s, inside the " & $PodBudgetSeconds & " s budget"
+    ## And the grace is clamped, so process exit cannot run away even when
+    ## every remaining artifact URI hangs for its full timeout.
+    check ShutdownGraceSeconds > 0, id & ": there is a shutdown grace"
+    check "if graceUntil > podDeadline" in source,
+      id & ": and it is clamped to the pod budget"
 
 if failures > 0:
   quit("test_procgen_engine: " & $failures & " failures", 1)

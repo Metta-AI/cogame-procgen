@@ -62,7 +62,23 @@ const
   ClientRoot = "client"
   ShutdownGraceSeconds* = 20
     ## `/healthz` and `/global` keep answering this long after the artifacts
-    ## are written; the episode runner waits on process exit anyway.
+    ## are written (the lantern 0.1.3 scar), CLAMPED by `PodBudgetSeconds`
+    ## below so it can never push the pod past its budget.
+  PodBudgetSeconds* = 720
+    ## 60 % of `episode_timeout_minutes: 20`, measured from the episode clock
+    ## — which starts at pod start, above the lobby. The arithmetic that has
+    ## to fit inside it, worst case: the budget guard turns the seat scripted
+    ## at `elapsed + 2 x turnBudgetSeconds > wallClockBudgetSeconds`, so the
+    ## last turn that may call the LLM ENDS by
+    ## `wallClockBudgetSeconds - turnBudgetSeconds` = 660 - 8 = 652 s; every
+    ## later turn is microseconds of integer work. Then the `gameOverFrames`
+    ## display hold (0.24 s) and the artifact writes, each bounded by
+    ## `runtime.FetchTimeoutSeconds` — the SCORED artifact is the first of
+    ## them, so results land by 672 s. This constant is what stops the rest of
+    ## the tail (three more artifact URIs that could each hang for their full
+    ## timeout, then this grace) from running past the budget: the grace ends
+    ## at the earlier of `now + ShutdownGraceSeconds` and this deadline.
+    ## `tests/test_procgen_engine.nim` block 31 asserts the whole sum.
   StartupGraceMs* = 200
 
 proc contentTypeFor(path: string): string =
@@ -494,8 +510,15 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
   sendFinal()
 
   # A bounded shutdown grace in which `/healthz` and `/global` keep answering
-  # (the lantern 0.1.3 scar).
-  let graceUntil = getMonoTime() + initDuration(seconds = ShutdownGraceSeconds)
+  # (the lantern 0.1.3 scar), CLAMPED to the pod budget: on the pathological
+  # path where every artifact URI hangs for its full timeout the artifacts
+  # have already eaten the tail, and holding the process open for another
+  # 20 s past 720 s buys nothing that the results write did not already
+  # deliver.
+  var graceUntil = getMonoTime() + initDuration(seconds = ShutdownGraceSeconds)
+  let podDeadline = started + initDuration(seconds = PodBudgetSeconds)
+  if graceUntil > podDeadline:
+    graceUntil = podDeadline
   while getMonoTime() < graceUntil:
     sleep(250)
   httpServer.close()

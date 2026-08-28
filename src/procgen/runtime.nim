@@ -32,7 +32,9 @@ type
     replayMode*: bool
     replay*: string
 
-const FetchTimeoutSeconds = 20
+const FetchTimeoutSeconds* = 20
+  ## Every artifact fetch and PUT is bounded by this and by nothing else; the
+  ## pod-budget arithmetic in `server.nim` is written against it.
 
 proc localPath(uriText: string): string =
   ## `file:///coworld/config.json` -> `/coworld/config.json`.
