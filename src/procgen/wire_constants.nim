@@ -9,7 +9,9 @@
 import std/strutils
 import levels, sim_types, tiles
 
-proc jsIntArray(values: openArray[int]): string =
+proc jsNumArray(values: openArray[float]): string =
+  ## `0.5` stays `0.5`; the whole rungs emit as `1.0`, `2.0`, … which JS
+  ## parses to the same numbers the chips label and compare against.
   result = "["
   for i, v in values:
     if i > 0: result.add ","
@@ -40,7 +42,7 @@ const WireConstantsMarker* = "<!-- WIRE_CONSTANTS -->"
   ## any script that reads window.PROCGEN_WIRE).
 
 proc wireConstantsJs*(): string =
-  "window.PROCGEN_WIRE={speeds:" & jsIntArray(PlaybackSpeeds) &
+  "window.PROCGEN_WIRE={speeds:" & jsNumArray(PlaybackSpeeds) &
   ",fps:" & $TargetFps &
   ",seats:" & $Seats &
   ",maxSayRunes:" & $MaxSayRunes &

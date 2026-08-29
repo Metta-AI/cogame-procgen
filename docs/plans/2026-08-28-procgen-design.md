@@ -158,7 +158,7 @@ Every pin in `playbooks/make-coworld.md` §Phase 0 ("Pins that are never optiona
 | Repo `Metta-AI/cogame-procgen`, **public** (`source-resolves` 404s on private) | §Packaging |
 | Build **both** an LLM policy and a scripted baseline day one, same image, env-switched | §Decisions (`PLAYER_PROMPT` vs `PLAYER_SCRIPTED=pathfinder\|scavenger`) |
 | Replays are a **static file + browser wasm viewer, never a pod** | §Viewer (`replay_viewer.bundle = static-replay-viewer`, `tools/build_replay_viewer.sh`; no `/client/replay` viewer is ever declared to the platform) |
-| Starter chrome **verbatim** — page + appended block, byte-identical `chrome_common.js`, transport rules, zoom decision | §Viewer → Chrome provenance, → Transport rules |
+| Starter chrome **verbatim** — page + appended block, pinned `chrome_common.js` (one named edit: the 0.5× rung), transport rules, zoom decision | §Viewer → Chrome provenance, → Transport rules |
 | **Real art, not placeholders** | §Viewer → Art (nano-banana tile kit + the starter's shipped chrome art) |
 | Legible to a casual spectator | §Viewer → Readouts and → Legible at 360 px (plain-language feed, "gem 3 of 4", never internal notation) |
 | **Two name spaces** — anonymous cog alias in-game, real policy name spectator-side | §The game → Seat, alias, and the second hidden name space |
@@ -782,7 +782,7 @@ all of them, so `import procgen/sim` still sees everything — the starter's rul
 
 | Path | Note |
 |---|---|
-| `client/chrome_common.js` | **40 022 bytes**, sha256 `7ace7287e0d19bf0fddb2362c55e4d76dfb44adcd4fbc8d1743b0557ced72f7c`, unedited, unreformatted (§Viewer) |
+| `client/chrome_common.js` | **40 037 bytes**, sha256 `594ed4a72cd908922c982d0f3e3ffb04ae1d97568fcd5f5daa794042662a369c`, the starter's file plus the 0.5× speed rung and nothing else, unreformatted (§Viewer) |
 | `tools/wasm_replay_smoke.cjs` | headless-node run of the exact emitted wasm module; only the module filename string changes |
 | `tools/ci/check_gameversion.sh`, `tools/ci/next_coworld_version.py`, `tools/ci/test_next_coworld_version.py` | unchanged |
 | `tests/config.nims` (`--path:"../src"`) | unchanged |
@@ -1213,9 +1213,11 @@ are coworld-ctf's own signals, inherited unchanged — this fork adds neither an
 
 ### Chrome provenance
 
-- **`client/chrome_common.js` is copied byte-for-byte** — 40 022 bytes, sha256
-  `7ace7287e0d19bf0fddb2362c55e4d76dfb44adcd4fbc8d1743b0557ced72f7c`. Not edited, not reformatted;
-  `tests/test_procgen_viewer.nim` pins that sha256 as a literal. Everything this game adds lives in the
+- **`client/chrome_common.js` is copied byte-for-byte, with ONE named edit** — 40 037 bytes, sha256
+  `594ed4a72cd908922c982d0f3e3ffb04ae1d97568fcd5f5daa794042662a369c`. The edit is the 0.5× rung on the speed
+  ladder: `SPEEDS`'s fallback literal and the speed→command map's `0.5: '5'`. Not otherwise edited,
+  not reformatted; `tests/test_procgen_viewer.nim` pins that sha256 as a literal, so any further
+  drift is a red test rather than a silent fork. Everything this game adds lives in the
   appended game block. Its `markBeat` / `renderBeatMarkers` / `ingestBeats` / `renderClock` /
   `renderTransport` / `ingestLullSpans` / `renderMomentum` remain, and `ingestBeats` ignores kinds it
   does not know.
@@ -1322,7 +1324,9 @@ than the rest, so the scrubber reads as eight chapters at a glance. The game blo
 `markBeat`, so an unlabelled div marker cannot appear.
 
 **Playback rate: `renderFramesPerStep = 4` at `ReplayFps = 24`** — 6 sim frames per second, speed
-chips `[1, 2, 3, 4, 8, 16]` (the starter's `PlaybackSpeeds`, default **1×**). A full 8-level episode of
+chips `[0.5, 1, 2, 3, 4, 8, 16]` (`PlaybackSpeeds`, default **1×**; the 0.5× rung is this fork's
+addition to the starter's ladder, and it advances one step every OTHER render frame rather than a
+fractional step). A full 8-level episode of
 ≈ 300 frames plays for **≈ 50 s**; the 4-level certification replay for **≈ 30 s**, which is what lets
 `viewer_smoke.mjs --soak 10` observe real advancement instead of a legitimately-finished replay (the
 ecos 2026-08-23 scar). **Level transition:** on each `levelstart` the block holds for 24 render frames
@@ -1799,9 +1803,10 @@ debug and `-d:release`). `tests/config.nims` (`--path:"../src"`) is the starter'
 
 **Viewer** (`tests/test_procgen_viewer.nim`, static assertions in the `test` job)
 
-39. `chrome_common is byte-identical` — sha256 of `client/chrome_common.js` equals
-    `7ace7287e0d19bf0fddb2362c55e4d76dfb44adcd4fbc8d1743b0557ced72f7c` and its length 40 022, both
-    pinned as literals.
+39. `chrome_common is byte-identical to its pin` — sha256 of `client/chrome_common.js` equals
+    `594ed4a72cd908922c982d0f3e3ffb04ae1d97568fcd5f5daa794042662a369c` and its length 40 037, both
+    pinned as literals. 39b: the 0.5× rung reaches the engine ladder, the emitted wire block, the
+    chrome's fallback ladder and the speed→command map, and Space pauses on the shipped page.
 40. `broadcast html is starter plus block` — the file begins with the starter's bytes up to the
     documented splice marker and only appends after it; `broadcast_core.js`'s kept procs are
     byte-identical to the starter's, **`pushFeed`'s signature included**.
