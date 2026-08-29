@@ -48,10 +48,11 @@ type
 
   Playback* = object
     playing*: bool
-    speed*: int
+    speed*: int                 ## step multiplier, or `ReplayHalfSpeed`
     loop*: bool
     skipLulls*: bool
     fastForward*: bool
+    halfPhase*: bool            ## flips every render frame; see `advance`
     frame*: int                 ## absolute render frame
     framesPerStep*: int
 
@@ -77,7 +78,13 @@ type
     stopFrame*: int
     stopEndRule*: string
 
-const LullSpanFrames* = 30
+const
+  LullSpanFrames* = 30
+  ReplayHalfSpeed* = -1
+    ## The `playback.speed` sentinel for the 0.5× rung. Every other rung is
+    ## the literal step multiplier (1, 2, 3, 4, 8, 16), so half speed cannot
+    ## be one of them: it is the same 1-step advance run on every OTHER
+    ## render frame. `-1` keeps `max(1, speed)` producing that 1 step.
 
 proc snapshotOf(episode: Episode, plan: string, planRun: int): Snapshot =
   let st = episode.level
@@ -313,8 +320,19 @@ proc inLull*(rt: ReplayRuntime, step: int): bool =
       return true
   false
 
+proc displaySpeed*(rt: ReplayRuntime): float =
+  ## What the chrome's speed chips compare against: the rung as a multiple of
+  ## real time, so the half rung reads 0.5 rather than the `-1` sentinel.
+  if rt.playback.speed == ReplayHalfSpeed: 0.5
+  else: float(max(1, rt.playback.speed))
+
 proc advance*(rt: var ReplayRuntime) =
   ## One render frame of playback.
+  ##
+  ## The phase flips FIRST, before the paused early-return, so it keeps
+  ## running off the page's render clock and a pause never parks the half
+  ## rung on one phase (which would halve it again, or undo it, on resume).
+  rt.playback.halfPhase = not rt.playback.halfPhase
   if not rt.playback.playing:
     return
   let last = rt.totalFrames() - 1
@@ -323,6 +341,10 @@ proc advance*(rt: var ReplayRuntime) =
   if rt.playback.skipLulls and rt.inLull(rt.stepAt(rt.playback.frame)):
     stepSize = stepSize * 4
     rt.playback.fastForward = true
+  elif rt.playback.speed == ReplayHalfSpeed and not rt.playback.halfPhase:
+    ## Half speed: one step every other render frame. OUTSIDE the lull boost
+    ## — a viewer who asked to skip lulls still skips them at full 4×.
+    return
   rt.playback.frame = rt.playback.frame + stepSize
   if rt.playback.frame >= last:
     if rt.playback.loop:
@@ -356,6 +378,7 @@ proc command*(rt: var ReplayRuntime, text: string) =
   of 'e': rt.playback.frame = rt.totalFrames() - 1
   of 'r': rt.playback.loop = not rt.playback.loop
   of 'f': rt.playback.skipLulls = not rt.playback.skipLulls
+  of '5': rt.playback.speed = ReplayHalfSpeed
   of '1': rt.playback.speed = 1
   of '2': rt.playback.speed = 2
   of '3': rt.playback.speed = 3

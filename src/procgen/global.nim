@@ -96,7 +96,7 @@ proc liveStateJson*(episode: Episode, playing: bool): string =
       "mt": 0,
       "ph": (if episode.over: "gameover"
              elif episode.levelIndex == 0: "lobby" else: "playing"),
-      "lob": 0, "sp": 1, "pl": playing, "lp": false, "sk": false,
+      "lob": 0, "sp": 1.0, "pl": playing, "lp": false, "sk": false,
       "ff": false, "en": false, "over": episode.over,
       "level": episode.levelIndex,
       "levels": episode.plan.len,

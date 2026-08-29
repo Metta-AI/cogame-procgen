@@ -131,7 +131,7 @@ proc chromeJson*(rt: ReplayRuntime, step: int): JsonNode =
     "mt": 0,
     "ph": phase,
     "lob": 0,
-    "sp": rt.playback.speed,
+    "sp": rt.displaySpeed(),
     "pl": rt.playback.playing,
     "lp": rt.playback.loop,
     "sk": rt.playback.skipLulls,

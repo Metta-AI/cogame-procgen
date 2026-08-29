@@ -45,7 +45,13 @@ const
   MaxFramesPerTurn* = 8
   MaxLevels* = 8
 
-  PlaybackSpeeds* = [1, 2, 3, 4, 8, 16]
+  PlaybackSpeeds* = [0.5, 1.0, 2.0, 3.0, 4.0, 8.0, 16.0]
+    ## The speed ladder the viewer's chips offer, as MULTIPLES OF REAL TIME.
+    ## Every entry above 1 is a whole-number step multiplier the replay
+    ## runtime applies directly; 0.5 is the half-speed rung, which advances
+    ## one step on every OTHER render frame (`ReplayHalfSpeed` in
+    ## `replay_runtime.nim`). Floats, not ints, so the wire block can name
+    ## the half rung at all.
   ProtocolName* = "procgen/v1"
   ReplayMagic* = "COWLDPGN"
   ReplayFormatVersion* = 1

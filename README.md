@@ -41,7 +41,7 @@ because the moment the seen half pays, memorising 128 published levels becomes w
 | `src/procgen/` | the sim: `tiles.nim`, `gen.nim` (the four generators), `levels.nim` (the frame resolver), `path.nim` (one bounded search), `seeds.nim`, `scoring.nim`, `upstream.nim`, plus the server, the commander layer and the replay |
 | `src/procgen.nim` | the game server, `/bin/procgen` |
 | `src/procgen_player.nim` | the thin seat registrar, `/bin/procgen-player` |
-| `client/` | the broadcast chrome: `chrome_common.js` (byte-identical to the starter's), `broadcast_core.js` (the tile renderer) and `replay_broadcast.html` (the starter's page plus the appended PROCGEN block) |
+| `client/` | the broadcast chrome: `chrome_common.js` (the starter's, plus the 0.5× speed rung), `broadcast_core.js` (the tile renderer) and `replay_broadcast.html` (the starter's page plus the appended PROCGEN block) |
 | `replay-viewer/` | the wasm entry, the emscripten link flags and the static shell |
 | `data/` | the board art: nano-banana renders of the Softmax cog, one kit per role |
 | `scripts/art/` | the source sheets and the split script that made `data/` |

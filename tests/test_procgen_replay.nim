@@ -3,8 +3,8 @@
 ## numbered blocks 32-35).
 
 import std/[json, os, osproc, strutils, unicode]
-import procgen/[baselines, directives, engine, levels, replay_runtime, replays,
-                sim, tiles]
+import procgen/[baselines, broadcast, directives, engine, levels,
+                replay_runtime, replays, sim, tiles]
 
 var failures = 0
 proc check(ok: bool, what: string) =
@@ -268,6 +268,72 @@ block:
       "49: " & recipe.name & " diverges from its recipe at frame " & $drift &
         " -- if the change was deliberate, re-record with --write in the " &
         "same commit"
+
+# 50. the 0.5x playback rung -------------------------------------------------
+#
+#  The viewer's speed chips are step multipliers the runtime applies per
+#  render frame, so every rung above 1 is just a bigger step. HALF speed
+#  cannot be: the smallest step is one frame. It is instead the same 1-frame
+#  step taken on every OTHER render frame, gated on `halfPhase`. The chips
+#  send '5'; the page relays the raw digit keys, so the '5' key does it too.
+block:
+  let played = runScriptedEpisode(cfg(31, levelCount = 2), blPathfinder)
+  let bytes = encodeReplay(played.replay)
+
+  proc framesAfter(commands: openArray[string], renderFrames: int): int =
+    ## Absolute render-frame position after driving `renderFrames` frames.
+    var rt = loadReplay(bytes)
+    for c in commands:
+      rt.command(c)
+    for _ in 0 ..< renderFrames:
+      rt.advance()
+    rt.playback.frame
+
+  ## 1x advances one frame per render frame; 0.5x advances half as far over
+  ## the same number of render frames, and 2x twice as far.
+  check framesAfter(["1"], 40) == 40, "50: 1x advances one frame per frame"
+  check framesAfter(["5"], 40) == 20,
+    "50: 0.5x advances half as far over the same render frames (got " &
+      $framesAfter(["5"], 40) & ")"
+  check framesAfter(["2"], 40) == 80, "50: 2x still doubles"
+
+  ## The rung is a real state, reported on the wire as 0.5 rather than as the
+  ## sentinel, and every other rung still reports its own multiplier.
+  var rt = loadReplay(bytes)
+  check rt.displaySpeed() == 1.0, "50: playback opens at 1x"
+  rt.command("5")
+  check rt.playback.speed == ReplayHalfSpeed,
+    "50: '5' selects the half rung"
+  check rt.displaySpeed() == 0.5, "50: and the wire reports it as 0.5"
+  rt.command("8")
+  check rt.displaySpeed() == 8.0, "50: '8' goes back up to 8x"
+  rt.command("5")
+  check "\"sp\":0.5" in framePacket(rt),
+    "50: the frame packet carries the 0.5 the chips compare against"
+
+  ## Pausing does not park the phase: Space in, Space out, and the half rung
+  ## still covers half the ground.
+  check framesAfter(["5", " ", " "], 40) == 20,
+    "50: a pause/unpause leaves the half rung advancing at half speed"
+
+  ## Half speed is the UNBOOSTED path only -- `f` (skip lulls) still fast
+  ## forwards through a lull at its full 4x. This episode has no lull of its
+  ## own, so the span is stated outright: what is under test is the ORDER of
+  ## the two branches, not the lull detector (block 33 owns that).
+  var lulled = loadReplay(bytes)
+  lulled.lulls = @[[0, 40]]
+  lulled.command("5")
+  lulled.command("f")
+  var boosted = 0
+  for _ in 0 ..< 2:
+    let before = lulled.playback.frame
+    lulled.advance()
+    boosted += lulled.playback.frame - before
+  check boosted == 8,
+    "50: skip-lulls still boosts to 4x on EVERY frame under the half rung " &
+      "(got " & $boosted & " over two frames)"
+  check lulled.playback.fastForward,
+    "50: and says so on the wire"
 
 if failures > 0:
   quit("test_procgen_replay: " & $failures & " failures", 1)

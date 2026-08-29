@@ -101,13 +101,15 @@ jobs:
           cat nim.cfg
           echo "::endgroup::"
 
-      - name: chrome_common.js is byte-identical to the starter's
+      - name: chrome_common.js is byte-identical to its pin
         # The design note pins the sha256; Nim's standard library ships sha1
         # and not sha256, so tests/test_procgen_viewer.nim pins the length and
-        # the sha1 and THIS step checks the sha256 the note names.
+        # the sha1 and THIS step checks the sha256. The file is the starter's
+        # chrome plus one deliberate repo-local edit -- the 0.5x rung on the
+        # speed ladder -- re-pinned here in the same commit that made it.
         run: |
           set -euo pipefail
-          echo "7ace7287e0d19bf0fddb2362c55e4d76dfb44adcd4fbc8d1743b0557ced72f7c  client/chrome_common.js" \
+          echo "594ed4a72cd908922c982d0f3e3ffb04ae1d97568fcd5f5daa794042662a369c  client/chrome_common.js" \
             | sha256sum -c -
 
       - name: Sweep and verify the scripted-baseline tuning

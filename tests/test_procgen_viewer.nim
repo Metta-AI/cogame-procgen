@@ -5,7 +5,7 @@
 ## assertions are what make that checkable.
 
 import std/[os, sha1, strutils]
-import procgen/[events, levels, sim_types, tiles]
+import procgen/[events, levels, sim_types, tiles, wire_constants]
 
 var failures = 0
 proc check(ok: bool, what: string) =
@@ -19,13 +19,18 @@ const
   CorePath = "client/broadcast_core.js"
   ## The byte length and the sha256 the design note pins. Nim's standard
   ## library ships sha1 and not sha256, so the sha256 is pinned here as the
-  ## literal it is and CHECKED BY `ci.yml`'s "chrome_common.js is
-  ## byte-identical" step with sha256sum; the sha1 and the length are checked
-  ## here, and all three change together or not at all.
-  ChromeCommonBytes = 40022
+  ## literal it is and CHECKED BY `ci.yml`'s "chrome_common.js is the pinned
+  ## chrome" step with sha256sum; the sha1 and the length are checked here,
+  ## and all three change together or not at all.
+  ##
+  ## The file is the starter's chrome plus ONE deliberate edit, made in this
+  ## repo and re-pinned with it: the 0.5x rung on the speed ladder (the
+  ## `SPEEDS` fallback and the speed->command map's `0.5: '5'`). Any OTHER
+  ## drift is what these three pins exist to catch.
+  ChromeCommonBytes = 40037
   ChromeCommonSha256 =
-    "7ace7287e0d19bf0fddb2362c55e4d76dfb44adcd4fbc8d1743b0557ced72f7c"
-  ChromeCommonSha1 = "d970ebe4eff1b0154ba604b4e9adf62d601cb3eb"
+    "594ed4a72cd908922c982d0f3e3ffb04ae1d97568fcd5f5daa794042662a369c"
+  ChromeCommonSha1 = "1dff4ef4241115084bb5a063ad95c5e159b904a8"
   BannerMarker = "PROCGEN additions to the inherited coworld-ctf chrome"
 
 if not fileExists(PagePath):
@@ -34,18 +39,47 @@ let
   page = readFile(PagePath)
   core = readFile(CorePath)
 
-# 39. chrome_common.js is byte-identical -------------------------------------
+# 39. chrome_common.js is byte-identical to its pin --------------------------
 block:
   check fileExists(ChromeCommonPath), "39: client/chrome_common.js ships"
   let bytes = readFile(ChromeCommonPath)
   check bytes.len == ChromeCommonBytes,
-    "39: chrome_common.js is exactly 40022 bytes (got " & $bytes.len & ")"
+    "39: chrome_common.js is exactly " & $ChromeCommonBytes &
+      " bytes (got " & $bytes.len & ")"
   check ($secureHash(bytes)).toLowerAscii() == ChromeCommonSha1,
-    "39: chrome_common.js is byte-identical to the starter's"
+    "39: chrome_common.js is byte-identical to the pinned chrome"
   check ChromeCommonSha256.len == 64,
     "39: the sha256 the note pins is carried as a literal for ci.yml"
   check "window.ChromeCommon" in bytes,
     "39: and it is the starter's chrome, not a lookalike"
+
+# 39b. the 0.5x rung reaches every shipped surface ---------------------------
+block:
+  ## The one shipped page is `client/replay_broadcast.html` (the Dockerfile
+  ## splices it to `index.html`; there is no league shell in this fork). Three
+  ## things have to agree for the half-speed chip to work, and each has bitten
+  ## a sibling repo on its own:
+  ##  - the engine ladder, which is what the wire block emits;
+  ##  - the chrome's own SPEEDS fallback, which is what ACTUALLY runs here:
+  ##    chrome_common.js reads `window.CTF_WIRE` (inherited, pinned) and this
+  ##    fork emits `window.PROCGEN_WIRE`, so the chips are always built from
+  ##    the fallback literal;
+  ##  - the speed->command map, whose char the replay runtime must decode.
+  let chrome = readFile(ChromeCommonPath)
+  check PlaybackSpeeds[0] == 0.5,
+    "39b: the engine ladder opens on the 0.5x rung"
+  check "speeds:[0.5," in wireConstantsJs(),
+    "39b: and the wire block emits it"
+  check "var SPEEDS = WIRE.speeds || [0.5, 1, 2, 3, 4, 8, 16];" in chrome,
+    "39b: the chrome's fallback ladder carries the 0.5x rung"
+  check "map = { 0.5: '5'," in chrome,
+    "39b: and maps it to the '5' command char"
+  ## Space pauses on the shipped page, and the page relays raw digits, which
+  ## is how '5' reaches the runtime from the keyboard as well as the chip.
+  check "if (k === ' ') { ev.preventDefault(); togglePlay(); }" in page,
+    "39b: Space pauses/unpauses on the shipped page"
+  check "else if (k >= '1' && k <= '9') send(k);" in page,
+    "39b: and the digit keys reach the runtime, '5' included"
 
 # 40. the page is the starter's plus an appended block -----------------------
 block:
