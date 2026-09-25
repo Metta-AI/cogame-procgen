@@ -33,6 +33,7 @@ type
     ## What the seat registered as. A seat that registers with neither field —
     ## or never registers at all — is `pathfinder`.
     isLlm*: bool
+    isExternal*: bool
     prompt*: string
     baseline*: Baseline
     label*: string
@@ -58,7 +59,9 @@ proc initDecisionEngine*(config: GameConfig): DecisionEngine =
   result.seat.label = "pathfinder"
 
 proc policyKind*(engine: DecisionEngine): string =
-  if engine.seat.isLlm: "llm" else: "scripted"
+  if engine.seat.isExternal: "external"
+  elif engine.seat.isLlm: "llm"
+  else: "scripted"
 
 # ---------------------------------------------------------------------------
 #  The turn
@@ -101,7 +104,9 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
 
   # --- does this turn need a call? -----------------------------------------
   var needsCall = false
-  if engine.seat.isLlm and not engine.llmOff and not engine.client.disabled:
+  if engine.seat.isExternal:
+    discard
+  elif engine.seat.isLlm and not engine.llmOff and not engine.client.disabled:
     needsCall = true
   elif engine.seat.isLlm:
     ## An LLM seat that CANNOT call the LLM this turn is a FALLBACK, not a
@@ -225,3 +230,23 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
     ## "falling back" is the phrase phase 60 greps the GAME log for.
     echo "procgen llm: seat 0 falling back to pathfinder (", cause,
       ") on turn ", turnIndex
+
+proc installExternalPlan*(engine: var DecisionEngine, episode: var Episode,
+                          moves: string): string =
+  if moves.len in 1 .. episode.config.framesPerTurn and legalAlphabet(moves):
+    var order = parsePlanOrder(%*{"moves": moves},
+      episode.config.framesPerTurn)
+    order.source = dsExternal
+    engine.order = order
+    engine.haveOrder = true
+    return ""
+  engine.order = fallbackPlan(episode.level, episode.config.framesPerTurn,
+    episode.config.fallLethal)
+  engine.haveOrder = true
+  inc episode.seat.fallbackTurns
+  let cause = if moves.len == 0: "timeout" else: "parse_error"
+  engine.events.add(FrameEvent(kind: ekFallback, level: episode.levelIndex,
+    turn: episode.turnsUsed + 1, frame: episode.level.frame,
+    at: episode.level.cog, text: cause))
+  fallbackRecord(episode.turnsUsed + 1, 1, cause,
+    "external player did not return a legal plan")

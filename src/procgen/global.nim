@@ -58,10 +58,12 @@ proc liveStateJson*(episode: Episode, playing: bool): string =
     bubbles.add(%*{"text": episode.seat.say, "x": st.cog.x, "y": st.cog.y})
   var roster = newJArray()
   roster.add(%*{
-    "s": 0, "name": episode.seat.name, "alias": cogAlias(0),
+    "s": 0, "name": (if episode.over: episode.seat.name else: cogAlias(0)),
+    "alias": cogAlias(0),
     "kind": episode.seat.policyKind, "level": episode.levelIndex,
     "of": episode.plan.len,
-    "split": (if episode.levelIndex >= 1: $episode.currentPlanned().split
+    "split": (if episode.over and episode.levelIndex >= 1:
+                $episode.currentPlanned().split
               else: ""),
     "collected": st.collected, "total": st.collectTotal,
     "alive": st.alive, "fallback": episode.seat.fallbackTurns > 0
@@ -101,9 +103,11 @@ proc liveStateJson*(episode: Episode, playing: bool): string =
       "level": episode.levelIndex,
       "levels": episode.plan.len,
       "kind": $st.kind,
-      "split": (if episode.levelIndex >= 1: $episode.currentPlanned().split
+      "split": (if episode.over and episode.levelIndex >= 1:
+                  $episode.currentPlanned().split
                 else: ""),
-      "seed": (if episode.levelIndex >= 1: episode.currentPlanned().seed
+      "seed": (if episode.over and episode.levelIndex >= 1:
+                 episode.currentPlanned().seed
                else: 0),
       "difficulty": normalizedDifficulty(episode.config.difficulty),
       "turn": st.levelTurn,
@@ -111,12 +115,15 @@ proc liveStateJson*(episode: Episode, playing: bool): string =
       "frame": st.frame,
       "collected": st.collected,
       "total": st.collectTotal,
-      "gauntletLine": episode.gauntletLine(),
+      "gauntletLine": (if episode.over: episode.gauntletLine()
+                       else: $episode.levelIndex & " / " & $episode.plan.len &
+                         " levels"),
       "mismatch": -1,
       "roster": roster,
       "beats": newJArray(),
       "lulls": newJArray(),
-      "splitbar": liveSplitBar(episode),
+      "splitbar": (if episode.over: liveSplitBar(episode)
+                   else: newJNull()),
       # No `lead`: `chrome_common.js`'s `ingestLeadSeries` takes the series
       # ONCE and never re-reads it, so a live stream — which cannot know the
       # running means before the levels are played — would pin the momentum

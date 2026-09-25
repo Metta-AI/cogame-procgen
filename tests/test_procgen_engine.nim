@@ -4,7 +4,7 @@
 
 import std/[json, os, sets, strutils]
 import procgen/[baselines, decide, directives, engine, events, global, levels,
-                records, replays, runtime, server, sim, sim_types]
+                numeric_bridge, records, replays, runtime, server, sim, sim_types]
 
 var failures = 0
 proc check(ok: bool, what: string) =
@@ -289,7 +289,7 @@ block:
       "30: naming how much wall clock was left"
   check decider.haveOrder, "30: the seat still has a plan after the guard"
 
-# the live /global state reads what the seat said, and draws the split bar ---
+# the live /global state reads what the seat said without leaking the split --
 block:
   ## `seat.say` / `sayFramesLeft` are set by the server on every turn that
   ## carries a remark; before this they were written and never read, and
@@ -301,11 +301,8 @@ block:
   discard episode.beginLevel()
   var live = parseJson(liveStateJson(episode, true))
   check live{"bubbles"}.len == 0, "global: no bubble before anybody speaks"
-  check live{"chrome"}{"splitbar"}{"bars"}.len == episode.plan.len,
-    "global: the split bar carries one bar per level"
-  check live{"chrome"}{"splitbar"}{"bars"}[0]{"split"}.getStr() in
-    ["seen", "unseen"],
-    "global: and each bar knows which half it is"
+  check live{"chrome"}{"splitbar"}.kind == JNull,
+    "global: the split bar stays hidden during play"
 
   const Remark = "digging under the rock"
   episode.seat.say = Remark
@@ -393,6 +390,30 @@ block:
     check ShutdownGraceSeconds > 0, id & ": there is a shutdown grace"
     check "if graceUntil > podDeadline" in source,
       id & ": and it is clamped to the pod budget"
+
+# 32. external policies use the same visible view and plan parser.
+block:
+  var config = defaultGameConfig()
+  config.seed = 42
+  var episode = newEpisode(config)
+  discard episode.beginLevel()
+  let view = parseJson(episode.seatViewJson())
+  check values(view).len == 1805,
+    "32: numeric observation has fixed width"
+  let heads = actionHeads(config.framesPerTurn)
+  check heads.len == 6 and heads[0]["choices"].len == 6,
+    "32: six plan positions each expose the ordinary six symbols"
+  var decision = initDecisionEngine(config)
+  decision.seat.isExternal = true
+  discard decision.turn(episode, 0)
+  check not decision.haveOrder,
+    "32: game waits for the ordinary player socket"
+  check decision.installExternalPlan(episode, "LRUDX.").len == 0 and
+    decision.order.source == dsExternal,
+    "32: external plan enters the game's parser"
+  check decision.installExternalPlan(episode, "invalid").len > 0 and
+    episode.seat.fallbackTurns == 1,
+    "32: invalid external plan is recorded as fallback"
 
 if failures > 0:
   quit("test_procgen_engine: " & $failures & " failures", 1)

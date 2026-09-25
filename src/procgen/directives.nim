@@ -24,6 +24,7 @@ type
     dsLlm = "llm"
     dsScripted = "scripted"
     dsFallback = "fallback"
+    dsExternal = "external"
 
   PlanOrder* = object
     ## One seat's whole order for one turn: a plan of up to `framesPerTurn`

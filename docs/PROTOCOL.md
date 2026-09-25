@@ -17,6 +17,16 @@ matches the seat**. `/global` is the spectator stream; `/healthz`, `/client/play
 `/client/global` answer the certifier's browser probes and keep answering for a bounded
 shutdown grace after the artifacts are written.
 
+An external player registers with `{"type":"register","mode":"external",...}`. Each turn,
+the game sends `{"type":"decision","turn":N,"seat":0,"deadline_ms":M,
+"observation":{...}}` on that player's `/player` socket. The player replies with
+`{"type":"plan","turn":N,"moves":"LRUDX."}`. A stale, late, missing, or invalid plan
+falls back to `pathfinder` and is recorded. Numeric and Jev policies use this same socket;
+the game owns the six-symbol action validation, frame resolver, results, and replay.
+The live `/global` and `/player` frames withhold future level seeds, the seen/unseen split,
+running split scores, and the real policy name until the episode settles. The final result
+and replay reveal them for scoring and viewing.
+
 ## Per-seat observation
 
 The whole level is in every observation — this game is **fully observed** — in tiles,
