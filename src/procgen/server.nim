@@ -36,11 +36,16 @@ type
     prompt: string
     scripted: string
     policy: string
+    external: bool
     seen: bool
 
   SharedState = object
     episode: Episode
     registration: Registration
+    pendingTurn: int
+    planTurn: int
+    plan: string
+    planAt: MonoTime
     joined: bool
     playing: bool
     finished: bool
@@ -217,7 +222,19 @@ proc applyRegistration(payload: string) =
     node = parseJson(payload)
   except CatchableError:
     return
-  if node.kind != JObject or node{"type"}.getStr() != "register":
+  if node.kind != JObject:
+    return
+  if node{"type"}.getStr() == "plan":
+    if node{"turn"}.kind != JInt or node{"moves"}.kind != JString:
+      return
+    withLock stateLock:
+      if shared.registration.external and
+          node["turn"].getInt() == shared.pendingTurn:
+        shared.planTurn = shared.pendingTurn
+        shared.plan = node["moves"].getStr()
+        shared.planAt = getMonoTime()
+    return
+  if node{"type"}.getStr() != "register":
     return
   withLock stateLock:
     shared.registration.prompt =
@@ -225,6 +242,7 @@ proc applyRegistration(payload: string) =
     shared.registration.scripted = node{"scripted"}.getStr()
     shared.registration.policy =
       node{"policy"}.getStr().truncateRunes(MaxPolicyLabelRunes)
+    shared.registration.external = node{"mode"}.getStr() == "external"
     shared.registration.seen = true
     shared.joined = true
 
@@ -372,10 +390,12 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
   else:
     engine.seat.registered = true
     engine.seat.prompt = reg.prompt
-    engine.seat.isLlm = reg.prompt.len > 0
+    engine.seat.isExternal = reg.external
+    engine.seat.isLlm = reg.prompt.len > 0 and not reg.external
     engine.seat.baseline = parseBaseline(reg.scripted)
     engine.seat.label =
       if reg.policy.len > 0: reg.policy
+      elif reg.external: "external"
       elif reg.prompt.len > 0: "prompt"
       else: $engine.seat.baseline
   episode.seat.policyKind = engine.policyKind()
@@ -422,7 +442,33 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
           replay.chats.add(stopRecord(episode.totalFrames, $endRule))
           stopRecorded = true
           break
-        let records = engine.turn(episode, elapsed)
+        let externalTurn = episode.turnsUsed + 1
+        let externalStart = getMonoTime()
+        let externalDeadline = externalStart +
+          initDuration(milliseconds = config.turnBudgetMs)
+        if engine.seat.isExternal:
+          withLock stateLock:
+            shared.pendingTurn = externalTurn
+            shared.planTurn = 0
+          withLock socketLock:
+            for entry in playerSockets:
+              entry.ws.send($( %*{"type": "decision", "turn": externalTurn,
+                "seat": 0, "deadline_ms": config.turnBudgetMs,
+                "observation": parseJson(episode.seatViewJson())}))
+        var records = engine.turn(episode, elapsed)
+        if engine.seat.isExternal:
+          var plan = ""
+          while true:
+            var received = false
+            withLock stateLock:
+              if shared.planTurn == externalTurn and
+                  shared.planAt <= externalDeadline:
+                plan = shared.plan
+                received = true
+            if received or getMonoTime() >= externalDeadline: break
+            sleep(10)
+          let record = engine.installExternalPlan(episode, plan)
+          if record.len > 0: records.add(record)
         for record in records:
           replay.chats.add(record)
         ## A fallback is a fact about the transport, not about the level, so

@@ -18,7 +18,7 @@ type
     name*: string               ## the REAL policy name — spectator side only
     token*: string
     joined*, registered*, dead*: bool
-    policyKind*: string         ## llm | scripted
+    policyKind*: string         ## llm | scripted | external
     policyLabel*: string
     baseline*: string
     llmTurns*, fallbackTurns*, ordersRejected*, saidTurns*: int

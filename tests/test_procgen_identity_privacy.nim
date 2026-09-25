@@ -10,7 +10,7 @@
 ## scorebug, which is the point of the split.
 
 import std/[json, strutils]
-import procgen/[baselines, decide, engine, llm, replays, sim]
+import procgen/[baselines, decide, engine, global, llm, replays, sim]
 
 var failures = 0
 proc check(ok: bool, what: string) =
@@ -42,6 +42,16 @@ block:
     for planned in episode.plan:
       check $planned.seed notin view,
         "17: no level seed reaches the observation (" & $planned.seed & ")"
+    let live = liveStateJson(episode, true)
+    check RealName notin live and "\"splitbar\":null" in live,
+      "17: live player and public sockets hide identity and score split"
+    let chrome = parseJson(live)["chrome"]
+    check chrome["seed"].getInt() == 0 and
+      chrome["split"].getStr().len == 0,
+      "17: live sockets hide the current level's seed and split"
+    for planned in episode.plan:
+      check $planned.seed notin live,
+        "17: live sockets hide every future level seed"
     ## The prompt is the system prompt plus the operator block plus the view;
     ## none of the three may carry any of it.
     let prompt = userMessage("take the nearest gem first", view)

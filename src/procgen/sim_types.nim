@@ -11,7 +11,10 @@
 import std/strutils
 
 const
-  GameVersion* = "1"
+  GameVersion* = "2" ## external player plans and result policy kind
+    ## GV2 (external plans): ordinary player sockets may return a six-frame
+    ## plan; replay directives and results identify that policy kind.
+    ##
     ## GV1 (procgen gauntlet): eight seed-generated 15x9 levels, four
     ## archetypes, a six-symbol action alphabet, and a score that is the mean
     ## return over the UNSEEN half only.

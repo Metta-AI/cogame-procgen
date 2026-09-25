@@ -1,10 +1,7 @@
-# Build Docker. ONE image, TWO entrypoints: /bin/procgen (the game server,
-# which also makes every LLM call, because the game pod is the only container
-# the platform injects the anthropic_api_key coworld secret into) and
-# /bin/procgen-player (the thin procgen seat registrar). The policy set is
-# env-switched inside this same image (PLAYER_PROMPT vs PLAYER_SCRIPTED), which
-# is what keeps a champion and a scripted filler byte-identical apart from
-# their environment.
+# Build Docker. ONE image, THREE entrypoints: /bin/procgen (the game server
+# and legacy prompt policy), /bin/procgen-player (the seat policy), and
+# /bin/procgen-numeric-bridge (the headless training adapter). The policy set is
+# env-switched inside this same image.
 FROM debian:bookworm-slim AS build
 
 RUN apt-get update && \
@@ -36,7 +33,8 @@ COPY nimby.lock .
 RUN nimby --global sync nimby.lock
 
 COPY . .
-ARG NimFlags="-d:release -d:useMalloc --opt:speed --stackTrace:on"
+# Mummy's shutdown crashes in ORC cycle cleanup under amd64 certification.
+ARG NimFlags="-d:release -d:useMalloc --opt:speed --stackTrace:on --mm:arc"
 RUN nim c \
   $NimFlags \
   --nimcache:/tmp/procgen-nimcache \
@@ -46,7 +44,12 @@ RUN nim c \
   $NimFlags \
   --nimcache:/tmp/procgen-player-nimcache \
   --out:procgen-player \
-  src/procgen_player.nim
+  src/procgen_player.nim && \
+  nim c \
+  $NimFlags \
+  --nimcache:/tmp/procgen-numeric-bridge-nimcache \
+  --out:procgen-numeric-bridge \
+  src/procgen/numeric_bridge.nim
 
 # Run Docker.
 FROM debian:bookworm-slim
@@ -58,6 +61,7 @@ RUN apt-get update && \
 WORKDIR /workspace/procgen
 COPY --from=build /workspace/procgen/procgen /bin/procgen
 COPY --from=build /workspace/procgen/procgen-player /bin/procgen-player
+COPY --from=build /workspace/procgen/procgen-numeric-bridge /bin/procgen-numeric-bridge
 COPY --from=build /workspace/procgen/*.json ./
 COPY --from=build /workspace/procgen/data ./data
 COPY --from=build /workspace/procgen/client ./client
