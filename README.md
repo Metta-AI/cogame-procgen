@@ -66,7 +66,7 @@ Build the headless bridge from this checkout, then run the recipe from a Metta c
 
 ```bash
 nim c -d:release --path:src -o:procgen-numeric-bridge src/procgen/numeric_bridge.nim
-uv run ./tools/run.py recipes.external.coworld.train --dry-run \
+uv run ./tools/run.py train recipes.external.coworld \
   'command=["/absolute/path/procgen-numeric-bridge","gauntlet"]' \
   players=1 seat=0 total_timesteps=1024
 ```
@@ -75,8 +75,7 @@ Replace the bridge path with its absolute path. Choose `gauntlet`, `sprint`, or 
 to match the maintained variants. The bridge uses the game's seat view and
 level resolver. It exposes 1,805 visible numeric values and six independent six-way action
 heads per turn. The terminal utility is `2 × unseen score − 1`; seen-level returns remain
-visible history but do not determine the training reward. Native training needs a CUDA host
-and exports a frozen Fabric policy bundle. Local seeded episodes have completed; no trained
+visible history but do not determine the training reward. Reserve an NVIDIA GPU before running the bounded native optimizer. Training exports a frozen Fabric policy bundle. Local seeded episodes have completed; no trained
 Procgen checkpoint has been produced yet.
 
 Start `metta-choice-serve` with that bundle and set
