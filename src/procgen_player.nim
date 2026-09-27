@@ -6,7 +6,6 @@
 ##   PLAYER_PROMPT        a strategy in plain English -> this seat is an LLM seat
 ##   PLAYER_SCRIPTED      pathfinder | scavenger               -> this seat is scripted
 ##   PLAYER_NUMERIC_URL   a frozen Fabric action endpoint
-##   PLAYER_JEV           1 to choose through System One
 ##   PLAYER_POLICY_LABEL  a free label for the replay's `register` record
 ##
 ## A seat that sets neither is `pathfinder`. To field your own policy, reuse this
@@ -15,10 +14,9 @@
 ##   coworld upload-policy <procgen-image> --name my-procgen \
 ##     --run /bin/procgen-player --secret-env PLAYER_PROMPT="<strategy>"
 
-import std/[json, monotimes, options, os, random, strutils, times, unicode]
+import std/[json, options, os, random, strutils, times, unicode]
 import whisky
 import procgen/numeric_policy
-import procgen/jev_policy
 
 const
   ConnectAttempts = 240      ## 240 x 500 ms = 2 minutes of dialling.
@@ -59,12 +57,10 @@ when isMainModule:
     prompt = getEnv("PLAYER_PROMPT").strip()
     scripted = getEnv("PLAYER_SCRIPTED").strip()
     numeric = getEnv("PLAYER_NUMERIC_URL").strip().len > 0
-    jev = getEnv("PLAYER_JEV") == "1"
-    external = numeric or jev
+    external = numeric
     label = block:
       let explicit = getEnv("PLAYER_POLICY_LABEL").strip()
       if explicit.len > 0: explicit
-      elif jev: "jev"
       elif numeric: "numeric"
       elif prompt.len > 0: "prompt"
       elif scripted.len > 0: scripted
@@ -73,13 +69,11 @@ when isMainModule:
     (if external: "external" elif prompt.len > 0: "llm" else: "scripted"),
     " baseline=", (if scripted.len > 0: scripted else: "pathfinder"),
     " label=", label
-  if external and (prompt.len > 0 or scripted.len > 0) or numeric and jev:
+  if external and (prompt.len > 0 or scripted.len > 0):
     quit("Choose exactly one player policy mode", 1)
   randomize()
   let session = "procgen:" & $getCurrentProcessId() & ":" &
     $getTime().toUnix() & ":" & $rand(high(int))
-  var lastJevStart: MonoTime
-  var jevStarted = false
 
   proc dial(attempts: int): WebSocket =
     ## Bounded dialling. The episode runner starts the players at the same
@@ -129,14 +123,7 @@ when isMainModule:
         if external and received.get().kind == TextMessage:
           let request = parseJson(received.get().data)
           if request{"type"}.getStr() == "decision":
-            if jev:
-              if jevStarted:
-                let since = (getMonoTime() - lastJevStart).inMilliseconds.int
-                if since < 2500: sleep(2500 - since)
-              lastJevStart = getMonoTime()
-              jevStarted = true
-            let moves = if jev: chooseJevPlan(request)
-              else: chooseNumericPlan(request, session)
+            let moves = chooseNumericPlan(request, session)
             socket.send($( %*{"type": "plan", "turn": request["turn"],
               "moves": moves}), TextMessage)
     except CatchableError as error:
