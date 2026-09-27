@@ -17,7 +17,7 @@ gap between them is the whole point of the coworld.
 [`docs/RULES.md`](docs/RULES.md), which opens with that sentence and lists every divergence.
 
 The current champions use `PLAYER_PROMPT`; the two fillers use scripted baselines.
-The player image also accepts numeric Fabric plans or Jev plans through the same seat socket.
+The player image also accepts numeric Fabric plans through the same seat socket.
 
 ## The four archetypes
 
@@ -83,8 +83,6 @@ Start `metta-choice-serve` with that bundle and set
 `PLAYER_NUMERIC_URL=http://<policy-host>:<port>/actions` on the player image.
 The player sends the seat-private values to the service and returns the chosen six-symbol
 plan over `/player`. `PLAYER_NUMERIC_KEY` supplies an optional bearer key.
-Set `PLAYER_JEV=1` for Jev instead; its model transport uses the player's Bedrock sidecar,
-`METTA_CAPTURE_URL`, or `TYPESAFE_BASE_URL`. Jev chooses the same six plan symbols.
 The game validates and executes every plan, and owns results and replay.
 
 ## Building
