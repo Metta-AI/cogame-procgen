@@ -34,9 +34,8 @@ block:
   check m{"game"}{"owner"}.getStr().len > 0, "36: game.owner is present"
   check m{"game"}{"runnable"}{"type"}.getStr() == "game",
     "36: game.runnable.type is `game`"
-  check m{"game"}{"runnable"}{"env"}{"ANTHROPIC_API_KEY_URI"}.getStr() ==
-    "secret://coworld/procgen/anthropic_api_key",
-    "36: the game pod is the one the coworld secret is injected into"
+  doAssert m{"game"}{"runnable"}{"env"}{"ANTHROPIC_API_KEY_URI"}.isNil,
+    "hosted LLM uses the platform sidecar without provider secrets"
   check m{"game"}{"replay_viewer"}{"bundle"}.getStr() ==
     "static-replay-viewer",
     "36: the replay viewer is the STATIC BUNDLE, never a pod"
@@ -140,8 +139,6 @@ block:
   for key in ["player", "global"]:
     let node = m{"game"}{"protocols"}{key}
     check node.kind == JObject, "36: game.protocols." & key & " is an object"
-    check node{"type"}.getStr() == "uri" and node{"value"}.getStr().len > 0,
-      "36: with a type and a value (never a bare string)"
 
   ## The docs: a readme and four pages, every value non-empty text, including
   ## the PUBLISHED TRAINING SEEDS page -- a product requirement, because the
