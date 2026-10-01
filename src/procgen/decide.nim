@@ -167,7 +167,7 @@ proc turn*(engine: var DecisionEngine, episode: var Episode,
         "the JSON object described above, starting with '{', naming one " &
         "\"moves\" string of up to six letters from LRUDX. .")
     let request = engine.client.requestFor(
-      SystemPrompt, userMessage(engine.seat.prompt, user), seat)
+      SystemPrompt, userMessage(engine.seat.prompt, user), 0)
     ## ONE batch per turn, carrying ONE request — the starter's batch path,
     ## unchanged, degenerating to a batch of one.
     var batch: RequestBatch
