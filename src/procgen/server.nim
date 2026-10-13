@@ -330,6 +330,8 @@ proc buildRouter(): Router =
 
 proc serveLoop(args: tuple[host: string, port: int]) {.thread.} =
   {.cast(gcsafe).}:
+    # Mummy destroys its router closure on this thread during shutdown.
+    httpServer = newServer(buildRouter().toHandler(), websocketHandler)
     httpServer.serve(Port(args.port), args.host)
 
 # ---------------------------------------------------------------------------
@@ -353,7 +355,6 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
     shared.episode = newEpisode(config)
     shared.playing = false
 
-  httpServer = newServer(buildRouter().toHandler(), websocketHandler)
   createThread(serveThread, serveLoop, (host: host, port: port))
   echo "procgen listening on ", host, ":", port
   sleep(StartupGraceMs)
@@ -566,6 +567,7 @@ proc runEpisode*(host: string, port: int, config: GameConfig,
   while getMonoTime() < graceUntil:
     sleep(250)
   httpServer.close()
+  joinThread(serveThread)
 
 proc runLocalReplay*(host: string, port: int, bytes: string) =
   ## Local developer replay mode, off `COGAME_LOAD_REPLAY_URI`. Serves the
