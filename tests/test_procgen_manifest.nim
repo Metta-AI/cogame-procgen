@@ -34,9 +34,8 @@ block:
   check m{"game"}{"owner"}.getStr().len > 0, "36: game.owner is present"
   check m{"game"}{"runnable"}{"type"}.getStr() == "game",
     "36: game.runnable.type is `game`"
-  check m{"game"}{"runnable"}{"env"}{"ANTHROPIC_API_KEY_URI"}.getStr() ==
-    "secret://coworld/procgen/anthropic_api_key",
-    "36: the game pod is the one the coworld secret is injected into"
+  check m{"game"}{"runnable"}{"env"}.len == 0,
+    "36: hosted inference uses injected sidecar credentials"
   check m{"game"}{"replay_viewer"}{"bundle"}.getStr() ==
     "static-replay-viewer",
     "36: the replay viewer is the STATIC BUNDLE, never a pod"
@@ -205,7 +204,7 @@ block:
     check "image: coworld-procgen:latest" in compose,
       "37: and its image is coworld-procgen:latest"
     check "platform: linux/amd64" in compose, "37: platform: linux/amd64"
-    check "network: host" in compose, "37: build.network: host"
+    check "network: host" notin compose, "37: builds use portable default networking"
 
 # 38. the wall-clock arithmetic holds ----------------------------------------
 block:

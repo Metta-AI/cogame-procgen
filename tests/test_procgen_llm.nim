@@ -62,7 +62,7 @@ block:
   delEnv("AWS_ENDPOINT_URL_BEDROCK_RUNTIME")
   delEnv("AWS_BEARER_TOKEN_BEDROCK")
   check bedrock.transport == ltBedrock, "llm: the bedrock transport is live"
-  let body = parseJson(bedrock.requestFor(SystemPrompt, "the view").body)
+  let body = parseJson(bedrock.requestFor(SystemPrompt, "the view", 0).body)
   check body{"messages"}.len == 2,
     "llm: the request carries the user turn AND the prefilled assistant turn"
   check body{"messages"}[1]{"role"}.getStr() == "assistant" and
